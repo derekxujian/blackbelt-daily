@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="黑带冲刺" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>黑带备考冲刺｜每日一练</title>
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">BB</div>
+        <div>
+          <div class="brand-title">黑带备考冲刺</div>
+          <div class="brand-subtitle">每日 10 题 · 错题复盘 · 考试预估</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button id="aiSettingsBtn" class="ghost-btn ai-top-btn"><span id="aiStatusDot" class="status-dot"></span>AI</button>
+        <button id="installBtn" class="ghost-btn" hidden>安装</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="homeView" class="view active">
+        <div class="hero-card">
+          <div class="eyebrow">TODAY</div>
+          <h1 id="todayTitle">今日一练</h1>
+          <p id="todayDesc" class="muted">从四套模拟题中抽取 10 道，约 10–15 分钟完成。</p>
+          <div class="stat-grid">
+            <div class="stat"><span id="streakValue" class="stat-value">0</span><span class="stat-label">连续打卡</span></div>
+            <div class="stat"><span id="estimateValue" class="stat-value">—</span><span class="stat-label">考试预估</span></div>
+            <div class="stat"><span id="bankValue" class="stat-value">81</span><span class="stat-label">已核对题库</span></div>
+          </div>
+          <button id="startBtn" class="primary-btn">开始今日 10 题</button>
+          <button id="resumeBtn" class="secondary-btn" hidden>查看今日结果</button>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>你的冲刺数据</h2>
+            <span id="daysDoneBadge" class="badge">0 天</span>
+          </div>
+          <div id="trendEmpty" class="empty-state">完成第一天练习后，这里会出现你的滚动实考预估和复习重点。</div>
+          <div id="trendContent" hidden>
+            <div class="estimate-card">
+              <div>
+                <div class="muted small">滚动实考预估（100分制）</div>
+                <div class="estimate-line"><strong id="estimateMain">—</strong><span id="estimateRange">—</span></div>
+              </div>
+              <div id="estimateLabel" class="estimate-pill">样本积累中</div>
+            </div>
+            <div class="focus-box">
+              <div class="focus-title">建议优先复习</div>
+              <div id="focusTags" class="chips"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel ai-home-card">
+          <div class="panel-head">
+            <div>
+              <h2>AI 学习助手 <span class="optional-label">可选</span></h2>
+              <p id="aiHomeSummary" class="muted small ai-summary">未开启。每日练习、评分、解析、预估与打卡均可正常使用。</p>
+            </div>
+            <span id="aiHomeBadge" class="badge neutral-badge">未开启</span>
+          </div>
+          <div class="ai-feature-grid">
+            <span>错题深度诊断</span><span>个性化复习建议</span><span>单题追问</span><span>今日冲刺总结</span>
+          </div>
+          <button id="aiHomeActionBtn" class="secondary-btn">设置 AI 加持</button>
+        </div>
+
+        <div class="panel compact-panel">
+          <div class="panel-head"><h2>学习群昵称</h2></div>
+          <div class="inline-form">
+            <input id="nicknameInput" maxlength="18" placeholder="例如：张三 / 生产一部-李工" />
+            <button id="saveNicknameBtn" class="small-btn">保存</button>
+          </div>
+          <p class="muted small">昵称只保存在当前手机，用于生成打卡图片；不会发送给 AI。</p>
+        </div>
+
+        <details class="panel details-panel">
+          <summary>关于题库、AI 与考试预估</summary>
+          <p>当前 V2.1 从你提供的四套模拟题中先纳入 81 道文字清晰、无需依赖复杂图表的题目，并保留原模拟题编号。扫描不清、图表依赖强或容易因 OCR 产生歧义的题暂未纳入。</p>
+          <p>新增本地“黑带知识库”：以 CSSBB Body of Knowledge 为考试范围与权重框架，并结合《The Certified Six Sigma Black Belt Handbook》第三版和《注册六西格玛黑带手册》第二版整理成概念、公式、易错点和复习抓手。知识库完全离线可用。</p>
+          <p>基础模式完全不需要 AI 或 API Key。只有学员主动开启 AI 学习助手后，才会把必要的题目、答题结果、学习表现，以及对应的本地知识库摘要发送给所选 AI 服务商。</p>
+          <p>“实考预估分”现在加入 CSSBB BOK 的 150 题模块权重进行加权，同时结合近期表现和样本量给出区间。它用于冲刺趋势判断，不等同任何认证机构的官方换算分。</p>
+        </details>
+      </section>
+
+      <section id="quizView" class="view">
+        <div class="quiz-top">
+          <button id="quitQuizBtn" class="icon-btn" aria-label="返回">←</button>
+          <div class="progress-wrap">
+            <div class="progress-row"><span id="progressText">1 / 10</span><span id="timerText">00:00</span></div>
+            <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+          </div>
+        </div>
+        <article class="question-card">
+          <div class="question-meta"><span id="questionTopic" class="badge"></span><span id="questionSource" class="muted small"></span></div>
+          <h2 id="questionText"></h2>
+          <div id="optionsBox" class="options"></div>
+        </article>
+        <div class="quiz-actions">
+          <button id="prevBtn" class="secondary-btn">上一题</button>
+          <button id="nextBtn" class="primary-btn">下一题</button>
+          <button id="submitBtn" class="primary-btn" hidden>提交并评分</button>
+        </div>
+      </section>
+
+      <section id="resultView" class="view">
+        <div class="result-hero">
+          <div class="eyebrow">TODAY RESULT</div>
+          <div class="score-ring"><span id="scoreValue">0</span><small>分</small></div>
+          <h1 id="resultHeadline">今日完成</h1>
+          <p id="resultSummary" class="muted"></p>
+          <div class="result-metrics">
+            <div><strong id="correctCount">0/10</strong><span>答对</span></div>
+            <div><strong id="resultEstimate">—</strong><span>考试预估</span></div>
+            <div><strong id="elapsedValue">—</strong><span>用时</span></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>这几块优先补</h2>
+          <div id="resultFocusTags" class="chips"></div>
+          <p id="reviewAdvice" class="muted advice"></p>
+        </div>
+
+        <div class="panel kb-result-panel">
+          <div class="panel-head">
+            <div>
+              <h2>知识库复盘</h2>
+              <p class="muted small kb-summary-note">依据 CSSBB BOK 与黑带手册，把今天错题对应到考试模块、认知层级和易错点。</p>
+            </div>
+            <span class="badge" id="kbCoverageBadge">BOK</span>
+          </div>
+          <div id="knowledgeReviewList" class="knowledge-review-list"></div>
+          <p class="muted tiny kb-source-note">知识库为教材内容的备考摘要，不复制教材原文；用于解释和复习导航。</p>
+        </div>
+
+        <div class="panel ai-result-panel">
+          <div class="panel-head">
+            <div>
+              <h2>AI 今日诊断 <span class="optional-label">可选</span></h2>
+              <p id="aiResultStatus" class="muted small ai-summary">开启后，AI 会结合今天错题和近期表现给出冲刺建议。</p>
+            </div>
+            <span id="aiResultBadge" class="badge neutral-badge">未开启</span>
+          </div>
+          <button id="generateAiDiagnosisBtn" class="ai-primary-btn">开启 AI 加持</button>
+          <div id="aiDiagnosisBox" class="ai-output" hidden></div>
+          <p class="muted tiny ai-disclaimer">AI 只作为辅助解释。题库中的标准答案与标准解析优先于 AI 输出。</p>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>逐题解析</h2><span class="badge">10题</span></div>
+          <div id="reviewList" class="review-list"></div>
+        </div>
+
+        <div class="sticky-actions">
+          <button id="checkinBtn" class="primary-btn">生成打卡图片</button>
+          <button id="backHomeBtn" class="secondary-btn">回到首页</button>
+        </div>
+      </section>
+    </main>
+
+    <div id="shareModal" class="modal" hidden>
+      <div class="modal-backdrop" data-close-share></div>
+      <div class="modal-card">
+        <div class="modal-head"><h2>今日打卡图</h2><button class="icon-btn" data-close-share>×</button></div>
+        <img id="checkinPreview" alt="今日打卡图片预览" />
+        <button id="shareImageBtn" class="primary-btn">分享到微信 / 系统分享</button>
+        <button id="downloadImageBtn" class="secondary-btn">保存图片</button>
+        <p class="muted small">手机支持系统分享时，可直接在分享面板选择微信；若系统不支持文件分享，请先保存图片再发到学习群。</p>
+      </div>
+    </div>
+
+    <div id="aiSettingsModal" class="modal" hidden>
+      <div class="modal-backdrop" data-close-ai-settings></div>
+      <div class="modal-card settings-card">
+        <div class="modal-head"><h2>AI 学习助手设置</h2><button class="icon-btn" data-close-ai-settings>×</button></div>
+        <div class="security-note">
+          <strong>BYOK：使用你自己的 API Key</strong>
+          <p>基础功能无需 AI。开启后，Key 只在当前浏览器中用于直接调用你选择的 AI 服务商；本应用不会把 Key 上传到课程组织者的服务器。浏览器端保存密钥仍有风险，默认仅本次会话保存。</p>
+        </div>
+
+        <label class="field-label" for="aiProviderSelect">AI 服务商</label>
+        <select id="aiProviderSelect" class="field-control">
+          <option value="deepseek">DeepSeek</option>
+          <option value="openai">OpenAI</option>
+          <option value="qwen">通义千问 / 阿里云百炼</option>
+          <option value="custom">自定义 OpenAI-compatible</option>
+        </select>
+
+        <label class="field-label" for="aiModelInput">模型</label>
+        <input id="aiModelInput" class="field-control" autocomplete="off" />
+
+        <label class="field-label" for="aiBaseUrlInput">Base URL</label>
+        <input id="aiBaseUrlInput" class="field-control mono" inputmode="url" autocomplete="off" />
+        <p class="muted tiny field-hint">可修改。自定义服务商请填写 OpenAI-compatible 的 Base URL。</p>
+
+        <label class="field-label" for="aiKeyInput">API Key</label>
+        <div class="key-row">
+          <input id="aiKeyInput" class="field-control mono" type="password" autocomplete="off" placeholder="sk-..." />
+          <button id="toggleAiKeyBtn" class="small-btn key-toggle" type="button">显示</button>
+        </div>
+
+        <label class="remember-row">
+          <input id="rememberAiKeyCheckbox" type="checkbox" />
+          <span><strong>在本设备保存 Key</strong><small>不勾选时，仅保存在当前浏览器会话；关闭浏览器后失效。</small></span>
+        </label>
+
+        <div id="aiTestResult" class="connection-result" hidden></div>
+        <button id="testAiBtn" class="secondary-btn">测试连接</button>
+        <button id="saveAiBtn" class="primary-btn">保存并开启 AI</button>
+        <button id="disableAiBtn" class="danger-link-btn">关闭 AI 并清除 Key</button>
+        <p class="muted tiny provider-note">部分 AI 服务商可能限制浏览器直接调用。如果出现“跨域/CORS”错误，可换用允许浏览器访问的服务商，或以后升级为安全代理模式。</p>
+      </div>
+    </div>
+
+    <div id="aiQuestionModal" class="modal" hidden>
+      <div class="modal-backdrop" data-close-ai-question></div>
+      <div class="modal-card">
+        <div class="modal-head"><h2>AI 错题教练</h2><button class="icon-btn" data-close-ai-question>×</button></div>
+        <div id="aiQuestionContext" class="question-context"></div>
+        <div id="aiQuestionOutput" class="ai-output"></div>
+        <button id="regenerateAiQuestionBtn" class="secondary-btn">重新分析</button>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+  </div>
+
+  <script src="questions.js"></script>
+  <script src="knowledge.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
