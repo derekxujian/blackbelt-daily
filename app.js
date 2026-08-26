@@ -8,6 +8,7 @@
   const STORAGE = {
     history: 'bb_history_v1',
     nickname: 'bb_nickname_v1',
+    examDate: 'bb_exam_date_v1',
     activePrefix: 'bb_active_',
     dailyPrefix: 'bb_dailyset_',
     aiConfig: 'bb_ai_config_v2',
@@ -66,6 +67,68 @@
   function getHistory(){ try{return JSON.parse(localStorage.getItem(STORAGE.history)||'[]')}catch{return[]} }
   function saveHistory(h){ localStorage.setItem(STORAGE.history,JSON.stringify(h)); }
   function getNickname(){ return localStorage.getItem(STORAGE.nickname)||'黑带冲刺学员'; }
+  function getExamDate(){
+    const v=localStorage.getItem(STORAGE.examDate)||'';
+    return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '';
+  }
+  function examPhase(days){
+    if(days < 0) return {label:'考试日期已过', tone:'past'};
+    if(days === 0) return {label:'今天考试', tone:'today'};
+    if(days <= 6) return {label:'考前决战', tone:'final'};
+    if(days <= 14) return {label:'冲刺期', tone:'sprint'};
+    if(days <= 30) return {label:'强化训练期', tone:'intense'};
+    return {label:'系统复习期', tone:'system'};
+  }
+  function examCountdown(){
+    const key=getExamDate(); if(!key)return null;
+    const today=dateFromKey(localDateKey());
+    const exam=dateFromKey(key);
+    const days=Math.round((exam-today)/86400000);
+    return {key,days,phase:examPhase(days)};
+  }
+  function getTodayAnsweredCount(){
+    if(getCompletedToday())return 10;
+    try{
+      const active=JSON.parse(localStorage.getItem(activeKey())||'null');
+      if(active && Array.isArray(active.answers)) return active.answers.filter(x=>x!==null&&x!==undefined).length;
+    }catch{}
+    return 0;
+  }
+  function refreshCountdown(history,estimate){
+    const cd=examCountdown();
+    $('countdownUnset').hidden=!!cd;
+    $('countdownActive').hidden=!cd;
+    $('examDateBtn').textContent=cd?'修改日期':'设置考试日期';
+    if(!cd)return;
+    $('countdownDays').textContent=Math.abs(cd.days);
+    $('countdownUnit').textContent=cd.days===0?'':'天';
+    $('countdownMessage').textContent=cd.days>0?'距离考试':cd.days===0?'今天就是考试日':'考试日期已过去';
+    $('countdownExamDate').textContent=formatDateCN(cd.key);
+    $('countdownPhase').textContent=cd.phase.label;
+    $('countdownPhase').className=`phase-pill ${cd.phase.tone}`;
+    $('countdownTodayProgress').textContent=`${getTodayAnsweredCount()}/10`;
+    $('countdownTotalQuestions').textContent=history.reduce((sum,h)=>sum+(h.total||10),0);
+    $('countdownEstimate').textContent=estimate?estimate.score:'—';
+  }
+  function openExamDateModal(){
+    const cd=getExamDate();
+    $('examDateInput').min=localDateKey();
+    $('examDateInput').value=cd||'';
+    $('clearExamDateBtn').hidden=!cd;
+    $('examDateModal').hidden=false;
+    setTimeout(()=>{ try{$('examDateInput').focus();}catch{} },50);
+  }
+  function closeExamDateModal(){ $('examDateModal').hidden=true; }
+  function saveExamDate(){
+    const v=$('examDateInput').value;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){ showToast('请选择考试日期'); return; }
+    if(dateFromKey(v) < dateFromKey(localDateKey())){ showToast('考试日期不能早于今天'); return; }
+    localStorage.setItem(STORAGE.examDate,v);
+    closeExamDateModal(); refreshHome(); showToast(`已设置考试日期：${formatDateCN(v)}`);
+  }
+  function clearExamDate(){
+    localStorage.removeItem(STORAGE.examDate); closeExamDateModal(); refreshHome(); showToast('已清除考试日期');
+  }
   function showToast(msg){ const t=$('toast'); t.textContent=msg; t.hidden=false; clearTimeout(t._h); t._h=setTimeout(()=>t.hidden=true,2200); }
   function showView(id){ ['homeView','quizView','resultView'].forEach(v=>$(v).classList.toggle('active',v===id)); window.scrollTo({top:0,behavior:'smooth'}); }
   function hashString(str){ let h=2166136261>>>0; for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619)} return h>>>0; }
@@ -270,6 +333,7 @@
     $('daysDoneBadge').textContent=`${history.length} 天`;
     $('todayTitle').textContent=`${formatDateCN()} · 今日一练`;
     $('nicknameInput').value=getNickname()==='黑带冲刺学员'?'':getNickname();
+    refreshCountdown(history,estimate);
     const active=localStorage.getItem(activeKey());
     if(done){
       $('startBtn').hidden=true; $('resumeBtn').hidden=false; $('resumeBtn').textContent=`查看今日结果 · ${done.score}分`;
@@ -639,12 +703,13 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
   function roundRect(ctx,x,y,w,h,r){ r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath(); }
 
   async function makeCheckin(record){
-    const history=getHistory(); const estimate=computeEstimate(history); const focus=resultFocus(record); const streak=calcStreak(history); const nick=getNickname();
+    const history=getHistory(); const estimate=computeEstimate(history); const focus=resultFocus(record); const streak=calcStreak(history); const nick=getNickname(); const cd=examCountdown();
     const c=document.createElement('canvas'); c.width=1080;c.height=1440; const ctx=c.getContext('2d');
     const g=ctx.createLinearGradient(0,0,1080,1440); g.addColorStop(0,'#0f172a');g.addColorStop(.62,'#172554');g.addColorStop(1,'#1d4ed8');ctx.fillStyle=g;ctx.fillRect(0,0,c.width,c.height);
     ctx.fillStyle='rgba(255,255,255,.08)'; for(let i=0;i<7;i++){ctx.beginPath();ctx.arc(920-i*145,180+i*180,110+i*16,0,Math.PI*2);ctx.fill();}
     ctx.fillStyle='#fff';ctx.font='800 42px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText('黑带备考冲刺 · 每日一练',76,105);
     ctx.fillStyle='#cbd5e1';ctx.font='500 25px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText(`${formatDateCN(record.date)}  ·  ${nick}`,76,153);
+    if(cd){ ctx.fillStyle='#93c5fd';ctx.font='700 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif'; const cdText=cd.days>0?`距考试 ${cd.days} 天 · ${cd.phase.label} · ${formatDateCN(cd.key)}`:cd.days===0?`今天考试 · ${formatDateCN(cd.key)}`:`考试日期已过 ${Math.abs(cd.days)} 天`;ctx.fillText(cdText,76,192); }
     if(isAiReady()){
       ctx.font='800 20px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif'; const label='AI 加持 · 已开启'; const w=ctx.measureText(label).width+40;
       ctx.fillStyle='rgba(124,58,237,.88)';roundRect(ctx,1004-w,82,w,42,21);ctx.fill();ctx.fillStyle='#fff';ctx.fillText(label,1024-w,110);
@@ -666,7 +731,7 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
     ctx.fillStyle='#475569';ctx.font='500 24px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';
     wrapText(ctx,record.score===100?'今天全对。继续保持题感，同时把统计、DOE、SPC 等高区分度模块轮换复习。':'错题不是损失，是冲刺阶段最便宜的得分点。把原因弄清楚，明天再遇到就不丢分。',126,1070,810,38,3);
     ctx.fillStyle='#cbd5e1';ctx.font='600 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText('四套模拟题 · CSSBB BOK加权复盘 · 每日10题',76,1312);
-    ctx.fillStyle='#93c5fd';ctx.font='800 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText('BLACK BELT SPRINT · V2.1 KNOWLEDGE',76,1352);
+    ctx.fillStyle='#93c5fd';ctx.font='800 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText('BLACK BELT SPRINT · V2.2 COUNTDOWN',76,1352);
     return new Promise(resolve=>c.toBlob(b=>resolve({blob:b,url:URL.createObjectURL(b)}),'image/png',.95));
   }
 
@@ -711,6 +776,11 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
     $('saveNicknameBtn').addEventListener('click',()=>{const v=$('nicknameInput').value.trim();localStorage.setItem(STORAGE.nickname,v||'黑带冲刺学员');showToast('昵称已保存');});
     $('checkinBtn').addEventListener('click',openCheckin); $('shareImageBtn').addEventListener('click',shareImage); $('downloadImageBtn').addEventListener('click',downloadImage);
     document.querySelectorAll('[data-close-share]').forEach(el=>el.addEventListener('click',closeShareModal));
+
+    $('examDateBtn').addEventListener('click',openExamDateModal);
+    $('saveExamDateBtn').addEventListener('click',saveExamDate);
+    $('clearExamDateBtn').addEventListener('click',clearExamDate);
+    document.querySelectorAll('[data-close-exam-date]').forEach(el=>el.addEventListener('click',closeExamDateModal));
 
     $('aiSettingsBtn').addEventListener('click',openAiSettings); $('aiHomeActionBtn').addEventListener('click',openAiSettings);
     document.querySelectorAll('[data-close-ai-settings]').forEach(el=>el.addEventListener('click',closeAiSettings));
