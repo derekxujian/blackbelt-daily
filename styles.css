@@ -17,3 +17,6 @@
 /* V2.3 flexible daily practice settings */
 .practice-settings{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0 8px}.practice-setting-item{display:flex;flex-direction:column;gap:6px;background:rgba(255,255,255,.78);border:1px solid #dbeafe;border-radius:15px;padding:11px 12px}.practice-setting-item>span{font-size:11px;font-weight:850;color:#475569}.practice-select{width:100%;border:0;background:transparent;color:#0f172a;font-size:14px;font-weight:850;outline:none;appearance:auto}.practice-select:disabled{opacity:.58;cursor:not-allowed}.practice-setting-hint{margin:0 2px 14px;line-height:1.45}.hero-card .primary-btn{margin-top:14px}
 @media(max-width:380px){.practice-settings{grid-template-columns:1fr}.practice-setting-item{padding:10px 11px}}
+
+/* V2.4 multi-round practice */
+.triple-actions{grid-template-columns:1.35fr 1fr 1fr}.checkin-best-note{text-align:center;line-height:1.5;margin:8px 4px 0}.hero-card .secondary-btn{margin-top:8px}@media(max-width:520px){.triple-actions{grid-template-columns:1fr 1fr}.triple-actions #checkinBtn{grid-column:1/-1}}@media(max-width:380px){.triple-actions{grid-template-columns:1fr}}

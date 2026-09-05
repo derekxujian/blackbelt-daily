@@ -86,7 +86,6 @@
   }
   function getActiveState(){ try{return JSON.parse(localStorage.getItem(activeKey())||'null')}catch{return null} }
   function getTodayTargetCount(){
-    const done=getCompletedToday(); if(done)return done.total||10;
     const active=getActiveState(); if(active && Array.isArray(active.qids))return active.total||active.qids.length||getDailyCount();
     return getDailyCount();
   }
@@ -110,7 +109,6 @@
     return {key,days,phase:examPhase(days)};
   }
   function getTodayAnsweredCount(){
-    const done=getCompletedToday(); if(done)return done.total||done.correct||0;
     const active=getActiveState();
     if(active && Array.isArray(active.answers)) return active.answers.filter(x=>x!==null&&x!==undefined).length;
     return 0;
@@ -127,7 +125,8 @@
     $('countdownExamDate').textContent=formatDateCN(cd.key);
     $('countdownPhase').textContent=cd.phase.label;
     $('countdownPhase').className=`phase-pill ${cd.phase.tone}`;
-    $('countdownTodayProgress').textContent=`${getTodayAnsweredCount()}/${getTodayTargetCount()}`;
+    const active=getActiveState(), attempts=getTodayAttempts();
+    $('countdownTodayProgress').textContent=active?`${getTodayAnsweredCount()}/${getTodayTargetCount()}`:(attempts.length?`${attempts.length}轮`:`0/${getTodayTargetCount()}`);
     $('countdownTotalQuestions').textContent=history.reduce((sum,h)=>sum+(h.total||10),0);
     $('countdownEstimate').textContent=estimate?estimate.score:'—';
   }
@@ -194,8 +193,18 @@
   }
 
   function activeKey(){ return STORAGE.activePrefix + localDateKey(); }
-  function dailyKey(count=getDailyCount(),difficulty=getDifficulty()){ return `${STORAGE.dailyPrefix}${localDateKey()}_${count}_${difficulty}`; }
-  function getCompletedToday(){ return getHistory().find(h=>h.date===localDateKey()); }
+  function dailyKey(count=getDailyCount(),difficulty=getDifficulty(),attemptNo=1){ return `${STORAGE.dailyPrefix}${localDateKey()}_${count}_${difficulty}_a${attemptNo}`; }
+  function getTodayAttempts(){
+    return getHistory().filter(h=>h.date===localDateKey()).sort((a,b)=>((a.attemptNo||1)-(b.attemptNo||1))||((a.completedAt||0)-(b.completedAt||0)));
+  }
+  function getBestToday(){
+    const attempts=getTodayAttempts();
+    if(!attempts.length)return null;
+    return [...attempts].sort((a,b)=>(b.score-a.score)||((b.correct||0)-(a.correct||0))||((a.elapsed||Infinity)-(b.elapsed||Infinity)))[0];
+  }
+  function getLatestToday(){ const attempts=getTodayAttempts(); return attempts.length?attempts[attempts.length-1]:null; }
+  function getCompletedToday(){ return getBestToday(); }
+  function uniquePracticeDays(history=getHistory()){ return [...new Set(history.map(h=>h.date).filter(Boolean))]; }
 
   function weightedWrongCounts(history){
     const map={};
@@ -203,13 +212,13 @@
     return map;
   }
 
-  function buildDailySet(count=getDailyCount(),difficulty=getDifficulty()){
-    const stored=localStorage.getItem(dailyKey(count,difficulty));
+  function buildDailySet(count=getDailyCount(),difficulty=getDifficulty(),attemptNo=1){
+    const stored=localStorage.getItem(dailyKey(count,difficulty,attemptNo));
     if(stored){
       try{ const ids=JSON.parse(stored); const qs=ids.map(id=>BANK.find(q=>q.id===id)).filter(Boolean); if(qs.length===count)return qs; }catch{}
     }
     const date=localDateKey();
-    const seed=hashString(`${date}|blackbelt|${count}|${difficulty}`);
+    const seed=hashString(`${date}|blackbelt|${count}|${difficulty}|attempt:${attemptNo}`);
     const history=getHistory();
     const wrong=weightedWrongCounts(history);
     const seen=new Set(history.flatMap(h=>h.qids||[]));
@@ -244,7 +253,7 @@
       for(const q of fallback){ if(selected.length>=count)break; tryPush(q,true); }
     }
     const finalSet=shuffle(selected.slice(0,count),seed+313);
-    localStorage.setItem(dailyKey(count,difficulty),JSON.stringify(finalSet.map(q=>q.id)));
+    localStorage.setItem(dailyKey(count,difficulty,attemptNo),JSON.stringify(finalSet.map(q=>q.id)));
     return finalSet;
   }
 
@@ -335,7 +344,7 @@
   function providerLabel(cfg=getAiConfig()){
     return (AI_PRESETS[cfg.provider]&&AI_PRESETS[cfg.provider].label)||'自定义服务商';
   }
-  function aiDiagnosisKey(date){ return STORAGE.aiDiagnosisPrefix+date; }
+  function aiDiagnosisKey(recordOrDate){ const date=typeof recordOrDate==='string'?recordOrDate:recordOrDate.date; const attempt=typeof recordOrDate==='string'?'':`_a${recordOrDate.attemptNo||1}`; return STORAGE.aiDiagnosisPrefix+date+attempt; }
   function aiQuestionKey(date,qid){ return STORAGE.aiQuestionPrefix+date+'_'+qid; }
   function clearAiKey(){
     localStorage.removeItem(STORAGE.aiKeyLocal);
@@ -355,11 +364,11 @@
   }
 
   function refreshHome(){
-    const history=getHistory(); const done=getCompletedToday(); const estimate=computeEstimate(history);
+    const history=getHistory(); const attempts=getTodayAttempts(); const best=getBestToday(); const estimate=computeEstimate(history);
     $('streakValue').textContent=calcStreak(history);
     $('estimateValue').textContent=estimate?estimate.score:'—';
     $('bankValue').textContent=BANK.length;
-    $('daysDoneBadge').textContent=`${history.length} 天`;
+    $('daysDoneBadge').textContent=`${uniquePracticeDays(history).length} 天`;
     $('todayTitle').textContent=`${formatDateCN()} · 今日一练`;
     $('nicknameInput').value=getNickname()==='黑带冲刺学员'?'':getNickname();
     refreshCountdown(history,estimate);
@@ -367,17 +376,19 @@
     const active=!!activeState;
     const settingsCount=activeState?(activeState.total||activeState.qids?.length||getDailyCount()):getDailyCount();
     const settingsDifficulty=activeState?(activeState.difficulty||getDifficulty()):getDifficulty();
+    const activeAttempt=activeState?(activeState.attemptNo||attempts.length+1):attempts.length+1;
     $('dailyCountSelect').value=String(settingsCount);
     $('difficultySelect').value=settingsDifficulty;
     $('dailyCountSelect').disabled=active;
     $('difficultySelect').disabled=active;
-    $('practiceSettingHint').textContent=active?`今日练习已开始：${settingsCount}题 · ${difficultyText(settingsDifficulty)}。完成后可调整明日设置。`:`今天将按 ${settingsCount} 题 · ${difficultyText(settingsDifficulty)} 出题。`;
-    if(done){
-      $('startBtn').hidden=true; $('resumeBtn').hidden=false; $('resumeBtn').textContent=`查看今日结果 · ${done.score}分`;
-      $('todayDesc').textContent='今天已经完成。建议先看错题解析，再把打卡图发到学习群。';
+    $('practiceSettingHint').textContent=active?`第 ${activeAttempt} 轮练习进行中：${settingsCount}题 · ${difficultyText(settingsDifficulty)}。完成本轮后可再次调整。`:`今天将按 ${settingsCount} 题 · ${difficultyText(settingsDifficulty)} 出题；可多轮练习。`;
+    $('startBtn').hidden=false;
+    $('startBtn').textContent=active?`继续第 ${activeAttempt} 轮 · ${settingsCount}题`:`开始第 ${attempts.length+1} 轮 · ${settingsCount}题`;
+    if(best){
+      $('resumeBtn').hidden=false; $('resumeBtn').textContent=`查看今日最高分 · ${best.score}分`;
+      $('todayDesc').textContent=`今天已完成 ${attempts.length} 轮，最高 ${best.score} 分。可以继续练习；生成打卡图时自动采用当天最高分。`;
     }else{
-      $('startBtn').hidden=false; $('resumeBtn').hidden=true;
-      $('startBtn').textContent=active?`继续今日 ${settingsCount} 题`:`开始今日 ${settingsCount} 题`;
+      $('resumeBtn').hidden=true;
       const minM=Math.max(4,Math.round(settingsCount*.9)), maxM=Math.max(minM+2,Math.round(settingsCount*1.4));
       $('todayDesc').textContent=`从四套模拟题中按“${difficultyLabel(settingsDifficulty)}”难度抽取 ${settingsCount} 道，约 ${minM}–${maxM} 分钟完成。`;
     }
@@ -393,20 +404,50 @@
   }
 
   function startQuiz(){
-    if(getCompletedToday()){ renderResult(getCompletedToday()); return; }
     let saved=getActiveState();
-    const count=saved?(saved.total||saved.qids?.length||getDailyCount()):getDailyCount();
-    const difficulty=saved?(saved.difficulty||getDifficulty()):getDifficulty();
-    const qs=buildDailySet(count,difficulty);
-    if(saved && Array.isArray(saved.qids) && saved.qids.join(',')===qs.map(q=>q.id).join(',')){
-      quiz={questions:qs,answers:saved.answers||Array(qs.length).fill(null),index:Math.min(saved.index||0,qs.length-1),startTime:saved.startTime||Date.now(),difficulty};
+    let qs=[], count=getDailyCount(), difficulty=getDifficulty(), attemptNo=getTodayAttempts().length+1;
+    if(saved && Array.isArray(saved.qids) && saved.qids.length){
+      qs=saved.qids.map(id=>BANK.find(q=>q.id===id)).filter(Boolean);
+      if(qs.length===saved.qids.length){
+        count=saved.total||qs.length; difficulty=saved.difficulty||difficulty; attemptNo=saved.attemptNo||attemptNo;
+      }else saved=null;
+    }
+    if(!saved){
+      attemptNo=getTodayAttempts().length+1;
+      count=getDailyCount(); difficulty=getDifficulty();
+      qs=buildDailySet(count,difficulty,attemptNo);
+    }
+    if(!qs.length){ showToast('题库加载失败，请强制刷新页面后重试'); return; }
+    if(saved){
+      quiz={questions:qs,answers:Array.isArray(saved.answers)?saved.answers:Array(qs.length).fill(null),index:Math.min(saved.index||0,qs.length-1),startTime:saved.startTime||Date.now(),difficulty,attemptNo};
+      if(quiz.answers.length!==qs.length)quiz.answers=Array(qs.length).fill(null);
     }else{
-      quiz={questions:qs,answers:Array(qs.length).fill(null),index:0,startTime:Date.now(),difficulty};
+      quiz={questions:qs,answers:Array(qs.length).fill(null),index:0,startTime:Date.now(),difficulty,attemptNo};
       persistQuiz();
     }
     showView('quizView'); renderQuestion(); startTimer();
   }
-  function persistQuiz(){ if(!quiz)return; localStorage.setItem(activeKey(),JSON.stringify({qids:quiz.questions.map(q=>q.id),answers:quiz.answers,index:quiz.index,startTime:quiz.startTime,total:quiz.questions.length,difficulty:quiz.difficulty||getDifficulty()}));
+  function persistQuiz(){ if(!quiz)return; localStorage.setItem(activeKey(),JSON.stringify({qids:quiz.questions.map(q=>q.id),answers:quiz.answers,index:quiz.index,startTime:quiz.startTime,total:quiz.questions.length,difficulty:quiz.difficulty||getDifficulty(),attemptNo:quiz.attemptNo||1})); }
+  function startTimer(){ clearInterval(timerHandle); const update=()=>{ if(!quiz)return; const sec=Math.floor((Date.now()-quiz.startTime)/1000); $('timerText').textContent=`${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`; }; update(); timerHandle=setInterval(update,1000); }
+  function stopTimer(){clearInterval(timerHandle);timerHandle=null;}
+
+  function renderQuestion(){
+    if(!quiz || !quiz.questions || !quiz.questions.length){ showToast('当前没有可用题目，请刷新页面'); return; }
+    const q=quiz.questions[quiz.index];
+    const total=quiz.questions.length;
+    $('progressText').textContent=`${quiz.index+1} / ${total}`;
+    $('progressBar').style.width=`${((quiz.index+1)/total)*100}%`;
+    $('questionTopic').textContent=q.topic;
+    $('questionSource').textContent=`模拟题${q.set} · 第${q.qno}题`;
+    $('questionText').textContent=q.question;
+    const box=$('optionsBox'); box.innerHTML='';
+    q.options.forEach((opt,i)=>{
+      const b=document.createElement('button'); b.className='option-btn'+(quiz.answers[quiz.index]===i?' selected':'');
+      b.innerHTML=`<span class="letter">${letters[i]}</span><span>${escapeHtml(opt)}</span>`;
+      b.addEventListener('click',()=>{quiz.answers[quiz.index]=i;persistQuiz();renderQuestion();}); box.appendChild(b);
+    });
+    $('prevBtn').disabled=quiz.index===0; $('prevBtn').style.opacity=quiz.index===0?'.45':'1';
+    const last=quiz.index===total-1; $('nextBtn').hidden=last; $('submitBtn').hidden=!last;
   }
   function go(delta){ quiz.index=Math.max(0,Math.min(quiz.questions.length-1,quiz.index+delta)); persistQuiz(); renderQuestion(); }
 
@@ -416,8 +457,8 @@
     stopTimer();
     const items=quiz.questions.map((q,i)=>({id:q.id,answer:quiz.answers[i],correct:quiz.answers[i]===q.answer}));
     const correct=items.filter(x=>x.correct).length; const total=items.length; const score=Math.round(correct/Math.max(1,total)*100); const elapsed=Math.max(1,Math.round((Date.now()-quiz.startTime)/1000));
-    const record={date:localDateKey(),score,correct,total,elapsed,difficulty:quiz.difficulty||getDifficulty(),qids:quiz.questions.map(q=>q.id),items};
-    const history=getHistory().filter(h=>h.date!==record.date); history.push(record); history.sort((a,b)=>a.date.localeCompare(b.date)); saveHistory(history);
+    const record={date:localDateKey(),attemptNo:quiz.attemptNo||getTodayAttempts().length+1,completedAt:Date.now(),score,correct,total,elapsed,difficulty:quiz.difficulty||getDifficulty(),qids:quiz.questions.map(q=>q.id),items};
+    const history=getHistory(); history.push(record); history.sort((a,b)=>a.date.localeCompare(b.date)||((a.attemptNo||1)-(b.attemptNo||1))||((a.completedAt||0)-(b.completedAt||0))); saveHistory(history);
     localStorage.removeItem(activeKey());
     renderResult(record);
   }
@@ -469,12 +510,13 @@
     $('resultEstimate').textContent=estimate?estimate.score:'—';
     $('elapsedValue').textContent=formatElapsed(record.elapsed||0);
     $('resultHeadline').textContent=record.score>=90?'状态很好，保持手感':record.score>=70?'今天这轮过关':'今天的错题很值钱';
-    $('resultSummary').textContent=estimate?`按 CSSBB BOK 模块权重校正后的滚动实考预估 ${estimate.score} 分，当前区间约 ${estimate.low}–${estimate.high}。`:'完成更多练习后会生成滚动预估。';
+    const bestToday=getBestToday(); const attemptsToday=getTodayAttempts();
+    $('resultSummary').textContent=(estimate?`按 CSSBB BOK 模块权重校正后的滚动实考预估 ${estimate.score} 分，当前区间约 ${estimate.low}–${estimate.high}。`:'完成更多练习后会生成滚动预估。')+` 今日第 ${record.attemptNo||1} 轮；已完成 ${attemptsToday.length} 轮，最高 ${bestToday?bestToday.score:record.score} 分。`;
     renderChips($('resultFocusTags'),focus);
     $('reviewAdvice').textContent=adviceFor(record,focus);
     renderKnowledgeReview(record);
 
-    const storedDiagnosis=localStorage.getItem(aiDiagnosisKey(record.date));
+    const storedDiagnosis=localStorage.getItem(aiDiagnosisKey(record));
     if(storedDiagnosis){ $('aiDiagnosisBox').textContent=storedDiagnosis; $('aiDiagnosisBox').hidden=false; }
     else{ $('aiDiagnosisBox').hidden=true; $('aiDiagnosisBox').textContent=''; }
 
@@ -617,7 +659,7 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
     try{
       const text=await callAi(system,buildDiagnosisPrompt(currentResultRecord),1200);
       box.classList.remove('loading'); box.textContent=text;
-      localStorage.setItem(aiDiagnosisKey(currentResultRecord.date),text);
+      localStorage.setItem(aiDiagnosisKey(currentResultRecord),text);
       $('generateAiDiagnosisBtn').textContent='重新生成 AI 诊断';
       showToast('AI 今日诊断已生成');
     }catch(err){
@@ -741,7 +783,7 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
     ctx.fillStyle='#93c5fd';ctx.font='700 25px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText('今日得分',130,300);
     ctx.fillStyle='#fff';ctx.font='900 150px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';ctx.fillText(String(record.score),122,465);
     ctx.font='700 34px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText('分',360,463);
-    ctx.fillStyle='#cbd5e1';ctx.font='600 27px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText(`答对 ${record.correct}/${record.total||10}`,130,548);
+    ctx.fillStyle='#cbd5e1';ctx.font='600 27px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText(`答对 ${record.correct}/${record.total||10} · 今日最高分`,130,548);
     ctx.fillStyle='rgba(251,191,36,.18)';roundRect(ctx,130,570,330,54,27);ctx.fill();
     ctx.fillStyle='#fde68a';ctx.font='800 25px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText(`已连续打卡 ${streak} 天`,151,605);
     ctx.fillStyle='#fff';ctx.font='800 31px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText('滚动实考预估',590,315);
@@ -756,16 +798,17 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
     ctx.fillStyle='#475569';ctx.font='500 24px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';
     wrapText(ctx,record.score===100?'今天全对。继续保持题感，同时把统计、DOE、SPC 等高区分度模块轮换复习。':'错题不是损失，是冲刺阶段最便宜的得分点。把原因弄清楚，明天再遇到就不丢分。',126,1070,810,38,3);
     ctx.fillStyle='#cbd5e1';ctx.font='600 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText(`四套模拟题 · CSSBB BOK加权复盘 · 今日${record.total||10}题 · ${difficultyLabel(record.difficulty||'medium')}难度`,76,1312);
-    ctx.fillStyle='#93c5fd';ctx.font='800 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText('BLACK BELT SPRINT · V2.3 FLEX PRACTICE',76,1352);
+    ctx.fillStyle='#93c5fd';ctx.font='800 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText('BLACK BELT SPRINT · V2.4 MULTI-ROUND',76,1352);
     return new Promise(resolve=>c.toBlob(b=>resolve({blob:b,url:URL.createObjectURL(b)}),'image/png',.95));
   }
 
   async function openCheckin(){
-    const record=getCompletedToday(); if(!record){showToast('先完成今日练习');return;}
+    const record=getBestToday(); if(!record){showToast('先完成至少一轮练习');return;}
     $('checkinBtn').disabled=true;$('checkinBtn').textContent='正在生成…';
     try{
       if(lastCheckinUrl)URL.revokeObjectURL(lastCheckinUrl);
       const out=await makeCheckin(record); lastCheckinBlob=out.blob; lastCheckinUrl=out.url; $('checkinPreview').src=out.url; $('shareModal').hidden=false;
+      if(getTodayAttempts().length>1)showToast(`打卡图已采用今日最高分 ${record.score} 分`);
     }finally{$('checkinBtn').disabled=false;$('checkinBtn').textContent='生成打卡图片';}
   }
   function closeShareModal(){ $('shareModal').hidden=true; }
@@ -794,10 +837,11 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
 
   function bind(){
     $('startBtn').addEventListener('click',startQuiz);
-    $('resumeBtn').addEventListener('click',()=>{const r=getCompletedToday();if(r)renderResult(r)});
+    $('resumeBtn').addEventListener('click',()=>{const r=getBestToday();if(r)renderResult(r)});
     $('prevBtn').addEventListener('click',()=>go(-1)); $('nextBtn').addEventListener('click',()=>go(1)); $('submitBtn').addEventListener('click',submitQuiz);
     $('quitQuizBtn').addEventListener('click',()=>{persistQuiz();stopTimer();showView('homeView');refreshHome();});
     $('backHomeBtn').addEventListener('click',()=>{showView('homeView');refreshHome();});
+    if($('newAttemptBtn'))$('newAttemptBtn').addEventListener('click',()=>{showView('homeView');refreshHome();setTimeout(startQuiz,60);});
     $('dailyCountSelect').addEventListener('change',e=>{
       const n=Number(e.target.value); if([5,10,15,20].includes(n))localStorage.setItem(STORAGE.dailyCount,String(n));
       refreshHome(); showToast(`每日题量已设为 ${getDailyCount()} 题`);
@@ -827,6 +871,7 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
 
   function init(){
     $('bankValue').textContent=BANK.length; bind();setupInstall();refreshHome();
+    if(!BANK.length){ showToast('题库未加载，请检查 questions.js 是否已部署并强制刷新'); $('startBtn').disabled=true; }
     if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
   }
   document.addEventListener('DOMContentLoaded',init);
