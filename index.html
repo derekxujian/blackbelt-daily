@@ -20,7 +20,7 @@
         <div class="brand-mark">BB</div>
         <div>
           <div class="brand-title">黑带备考冲刺</div>
-          <div class="brand-subtitle">每日 10 题 · 错题复盘 · 考试预估</div>
+          <div class="brand-subtitle">自选题量 · 分级难度 · 错题复盘 · 考试预估</div>
         </div>
       </div>
       <div class="top-actions">
@@ -67,7 +67,27 @@
         <div class="hero-card">
           <div class="eyebrow">TODAY</div>
           <h1 id="todayTitle">今日一练</h1>
-          <p id="todayDesc" class="muted">从四套模拟题中抽取 10 道，约 10–15 分钟完成。</p>
+          <p id="todayDesc" class="muted">从四套模拟题中按你的设置生成今日练习。</p>
+          <div class="practice-settings" aria-label="今日练习设置">
+            <label class="practice-setting-item">
+              <span>每日题量</span>
+              <select id="dailyCountSelect" class="practice-select">
+                <option value="5">5 题</option>
+                <option value="10" selected>10 题</option>
+                <option value="15">15 题</option>
+                <option value="20">20 题</option>
+              </select>
+            </label>
+            <label class="practice-setting-item">
+              <span>难度</span>
+              <select id="difficultySelect" class="practice-select">
+                <option value="low">低 · 基础巩固</option>
+                <option value="medium" selected>中 · 标准难度</option>
+                <option value="high">高 · 高难挑战</option>
+              </select>
+            </label>
+          </div>
+          <p id="practiceSettingHint" class="muted tiny practice-setting-hint">今天将按 10 题 · 标准难度出题。</p>
           <div class="stat-grid">
             <div class="stat"><span id="streakValue" class="stat-value">0</span><span class="stat-label">连续打卡</span></div>
             <div class="stat"><span id="estimateValue" class="stat-value">—</span><span class="stat-label">考试预估</span></div>
@@ -123,9 +143,9 @@
 
         <details class="panel details-panel">
           <summary>关于题库、AI 与考试预估</summary>
-          <p>当前 V2.2 从你提供的四套模拟题中先纳入 81 道文字清晰、无需依赖复杂图表的题目，并保留原模拟题编号。扫描不清、图表依赖强或容易因 OCR 产生歧义的题暂未纳入。</p>
+          <p>当前 V2.3 从你提供的四套模拟题中先纳入 81 道文字清晰、无需依赖复杂图表的题目，并保留原模拟题编号。扫描不清、图表依赖强或容易因 OCR 产生歧义的题暂未纳入。</p>
           <p>新增本地“黑带知识库”：以 CSSBB Body of Knowledge 为考试范围与权重框架，并结合《The Certified Six Sigma Black Belt Handbook》第三版和《注册六西格玛黑带手册》第二版整理成概念、公式、易错点和复习抓手。知识库完全离线可用。</p>
-          <p>基础模式完全不需要 AI 或 API Key。只有学员主动开启 AI 学习助手后，才会把必要的题目、答题结果、学习表现，以及对应的本地知识库摘要发送给所选 AI 服务商。</p>
+          <p>每日题量可设为 5 / 10 / 15 / 20 题，难度可选低 / 中 / 高。难度采用题库难度标签进行加权抽题，并优先轮换未做题。基础模式完全不需要 AI 或 API Key。只有学员主动开启 AI 学习助手后，才会把必要的题目、答题结果、学习表现，以及对应的本地知识库摘要发送给所选 AI 服务商。</p>
           <p>“实考预估分”现在加入 CSSBB BOK 的 150 题模块权重进行加权，同时结合近期表现和样本量给出区间。它用于冲刺趋势判断，不等同任何认证机构的官方换算分。</p>
         </details>
       </section>
@@ -195,7 +215,7 @@
         </div>
 
         <div class="panel">
-          <div class="panel-head"><h2>逐题解析</h2><span class="badge">10题</span></div>
+          <div class="panel-head"><h2>逐题解析</h2><span id="reviewCountBadge" class="badge">10题</span></div>
           <div id="reviewList" class="review-list"></div>
         </div>
 
