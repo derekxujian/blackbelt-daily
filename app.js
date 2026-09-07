@@ -11,13 +11,25 @@
     examDate: 'bb_exam_date_v1',
     dailyCount: 'bb_daily_count_v3',
     difficulty: 'bb_difficulty_v3',
+    theme: 'bb_theme_v25',
+    newRatioPrefix: 'bb_new_ratio_v25_',
     activePrefix: 'bb_active_',
-    dailyPrefix: 'bb_dailyset_',
+    dailyPrefix: 'bb_dailyset_v25_',
     aiConfig: 'bb_ai_config_v2',
     aiKeyLocal: 'bb_ai_key_local_v2',
     aiKeySession: 'bb_ai_key_session_v2',
     aiDiagnosisPrefix: 'bb_ai_diagnosis_',
     aiQuestionPrefix: 'bb_ai_question_'
+  };
+
+  const THEMES = {
+    default: {label:'默认 · 专业蓝', bg1:'#0f172a',bg2:'#172554',bg3:'#1d4ed8',accent:'#2563eb',soft:'#93c5fd',ink:'#0f172a'},
+    anime: {label:'二次元 · 轻快', bg1:'#5b4b8a',bg2:'#7c3aed',bg3:'#06b6d4',accent:'#ec4899',soft:'#f9a8d4',ink:'#3b0764'},
+    scifi: {label:'科幻 · 霓虹', bg1:'#020617',bg2:'#082f49',bg3:'#0e7490',accent:'#06b6d4',soft:'#67e8f9',ink:'#082f49'},
+    scholar: {label:'学霸 · 纸笔', bg1:'#172554',bg2:'#1e3a8a',bg3:'#ca8a04',accent:'#1d4ed8',soft:'#fde68a',ink:'#172554'},
+    chinese: {label:'中国风 · 丹青', bg1:'#3f1d1d',bg2:'#7f1d1d',bg3:'#a16207',accent:'#b91c1c',soft:'#fca5a5',ink:'#3f1d1d'},
+    nezha: {label:'哪吒 · 国潮神话', bg1:'#450a0a',bg2:'#991b1b',bg3:'#ea580c',accent:'#ef4444',soft:'#fdba74',ink:'#450a0a'},
+    odyssey: {label:'古希腊 · 奥德赛', bg1:'#0c4a6e',bg2:'#075985',bg3:'#b45309',accent:'#0284c7',soft:'#fcd34d',ink:'#0c4a6e'}
   };
 
   const AI_PRESETS = {
@@ -84,6 +96,25 @@
     if(v==='high') return {1:1,2:6,3:16};
     return {1:3,2:12,3:5};
   }
+  function getTheme(){
+    const v=localStorage.getItem(STORAGE.theme)||'default';
+    return THEMES[v]?v:'default';
+  }
+  function applyTheme(v=getTheme()){
+    const theme=THEMES[v]?v:'default';
+    document.documentElement.dataset.theme=theme;
+    const meta=document.querySelector('meta[name="theme-color"]');
+    if(meta)meta.setAttribute('content',THEMES[theme].bg1);
+  }
+  function themeLabel(v=getTheme()){ return (THEMES[v]||THEMES.default).label; }
+  function ratioStorageKey(){ return STORAGE.newRatioPrefix+localDateKey(); }
+  function getManualNewRatio(){
+    const raw=localStorage.getItem(ratioStorageKey());
+    if(raw===null || raw==='')return null;
+    const n=Number(raw);
+    return Number.isFinite(n)&&n>=0&&n<=100?Math.round(n/10)*10:null;
+  }
+  function saveManualNewRatio(n){ localStorage.setItem(ratioStorageKey(),String(Math.max(0,Math.min(100,Math.round(Number(n)/10)*10)))); }
   function getActiveState(){ try{return JSON.parse(localStorage.getItem(activeKey())||'null')}catch{return null} }
   function getTodayTargetCount(){
     const active=getActiveState(); if(active && Array.isArray(active.qids))return active.total||active.qids.length||getDailyCount();
@@ -193,7 +224,7 @@
   }
 
   function activeKey(){ return STORAGE.activePrefix + localDateKey(); }
-  function dailyKey(count=getDailyCount(),difficulty=getDifficulty(),attemptNo=1){ return `${STORAGE.dailyPrefix}${localDateKey()}_${count}_${difficulty}_a${attemptNo}`; }
+  function dailyKey(count=getDailyCount(),difficulty=getDifficulty(),attemptNo=1,newRatio=80){ return `${STORAGE.dailyPrefix}${localDateKey()}_${count}_${difficulty}_a${attemptNo}_r${newRatio}`; }
   function getTodayAttempts(){
     return getHistory().filter(h=>h.date===localDateKey()).sort((a,b)=>((a.attemptNo||1)-(b.attemptNo||1))||((a.completedAt||0)-(b.completedAt||0)));
   }
@@ -211,49 +242,136 @@
     history.forEach(h=>(h.items||[]).forEach(it=>{ if(!it.correct){ map[it.id]=(map[it.id]||0)+1; } }));
     return map;
   }
+  function daysBetweenKeys(older,newer=localDateKey()){
+    return Math.max(0,Math.round((dateFromKey(newer)-dateFromKey(older))/86400000));
+  }
+  function questionLastSeenMap(history=getHistory()){
+    const map={};
+    history.forEach(h=>{
+      const ids=(h.qids&&h.qids.length)?h.qids:(h.items||[]).map(x=>x.id);
+      ids.forEach(id=>{ if(!id)return; if(!map[id] || String(h.date)>map[id])map[id]=String(h.date); });
+    });
+    return map;
+  }
+  function questionExposure(q,lastSeenMap,asOf=localDateKey()){
+    const last=lastSeenMap[q.id]||'';
+    if(!last)return {kind:'new',never:true,last:'',days:Infinity};
+    const days=daysBetweenKeys(last,asOf);
+    return {kind:days>=28?'new':'old',never:false,last,days};
+  }
+  function recent7DailyAverage(history=getHistory()){
+    const perDay={};
+    history.forEach(h=>{ perDay[h.date]=(perDay[h.date]||0)+(h.total||0); });
+    let total=0, activeDays=0;
+    for(let i=1;i<=7;i++){
+      const d=new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()-i); const key=localDateKey(d);
+      const n=perDay[key]||0; total+=n; if(n>0)activeDays++;
+    }
+    if(!activeDays)return null;
+    return total/7;
+  }
+  function globallySeenIds(history=getHistory()){
+    return new Set(history.flatMap(h=>(h.qids&&h.qids.length)?h.qids:(h.items||[]).map(x=>x.id)).filter(Boolean));
+  }
+  function coveragePlan(count=getDailyCount(),history=getHistory()){
+    const avg=recent7DailyAverage(history);
+    let ratio=80;
+    if(avg===null){
+      ratio=count<=5?90:count===10?80:count===15?75:70;
+    }else if(avg<7)ratio=90;
+    else if(avg<10)ratio=85;
+    else if(avg<=10)ratio=80;
+    else if(avg<=15)ratio=75;
+    else ratio=70;
 
+    const seen=globallySeenIds(history);
+    const remainingNever=Math.max(0,BANK.length-seen.size);
+    const cd=examCountdown();
+    let requiredNewPerDay=0, urgencyRaised=false;
+    if(cd && cd.days>0 && remainingNever>0){
+      requiredNewPerDay=Math.ceil(remainingNever/Math.max(1,cd.days));
+      const requiredRatio=Math.min(100,Math.ceil((requiredNewPerDay/Math.max(1,count))*10)*10);
+      if(requiredRatio>ratio){ ratio=requiredRatio; urgencyRaised=true; }
+    }
+    ratio=Math.max(50,Math.min(100,Math.round(ratio/5)*5));
+    return {ratio,avg,seenCount:seen.size,remainingNever,requiredNewPerDay,urgencyRaised};
+  }
+  function targetNewRatio(count=getDailyCount(),attemptNo=1,history=getHistory()){
+    const auto=coveragePlan(count,history);
+    if(attemptNo>=2){
+      const manual=getManualNewRatio();
+      if(manual!==null)return {ratio:manual,mode:'manual',plan:auto};
+    }
+    return {ratio:auto.ratio,mode:'auto',plan:auto};
+  }
+  function balancedPick(pool,need,seed,scoreQ,selected,topicCounts,topicCap){
+    if(need<=0 || !pool.length)return 0;
+    const groups={2:[],3:[],4:[],5:[]};
+    pool.forEach(q=>{ if(!selected.some(x=>x.id===q.id))(groups[q.set]||=[]).push(q); });
+    Object.keys(groups).forEach(k=>groups[k].sort((a,b)=>scoreQ(b)-scoreQ(a)));
+    const order=shuffle([2,3,4,5],seed);
+    let added=0, guard=0;
+    while(added<need && guard<1000){
+      let progressed=false;
+      for(const setNo of order){
+        const arr=groups[setNo]||[];
+        let idx=arr.findIndex(q=>(topicCounts[q.topic]||0)<topicCap && !selected.some(x=>x.id===q.id));
+        if(idx<0)idx=arr.findIndex(q=>!selected.some(x=>x.id===q.id));
+        if(idx>=0){
+          const q=arr.splice(idx,1)[0]; selected.push(q);topicCounts[q.topic]=(topicCounts[q.topic]||0)+1;added++;progressed=true;
+          if(added>=need)break;
+        }
+      }
+      if(!progressed)break;
+      guard++;
+    }
+    return added;
+  }
   function buildDailySet(count=getDailyCount(),difficulty=getDifficulty(),attemptNo=1){
-    const stored=localStorage.getItem(dailyKey(count,difficulty,attemptNo));
+    const history=getHistory();
+    const ratioInfo=targetNewRatio(count,attemptNo,history);
+    const requestedNewRatio=ratioInfo.ratio;
+    const stored=localStorage.getItem(dailyKey(count,difficulty,attemptNo,requestedNewRatio));
     if(stored){
-      try{ const ids=JSON.parse(stored); const qs=ids.map(id=>BANK.find(q=>q.id===id)).filter(Boolean); if(qs.length===count)return qs; }catch{}
+      try{
+        const ids=JSON.parse(stored); const qs=ids.map(id=>BANK.find(q=>q.id===id)).filter(Boolean);
+        if(qs.length===count){
+          const lastSeen=questionLastSeenMap(history); const actualNew=qs.filter(q=>questionExposure(q,lastSeen).kind==='new').length;
+          qs._meta={requestedNewRatio,actualNewCount:actualNew,actualOldCount:count-actualNew,ratioMode:ratioInfo.mode,plan:ratioInfo.plan}; return qs;
+        }
+      }catch{}
     }
     const date=localDateKey();
-    const seed=hashString(`${date}|blackbelt|${count}|${difficulty}|attempt:${attemptNo}`);
-    const history=getHistory();
+    const seed=hashString(`${date}|blackbelt|${count}|${difficulty}|attempt:${attemptNo}|ratio:${requestedNewRatio}`);
     const wrong=weightedWrongCounts(history);
-    const seen=new Set(history.flatMap(h=>h.qids||[]));
-    const unseen=BANK.filter(q=>!seen.has(q.id));
-    const pool=unseen.length>=count ? unseen : BANK;
+    const lastSeen=questionLastSeenMap(history);
     const weights=difficultyWeights(difficulty);
-    const scoreQ=(q)=> (weights[q.difficulty||1]||1) + (seen.has(q.id)?0:8) + Math.min(6,(wrong[q.id]||0)*2) + ((hashString(`${seed}|${q.id}`)%1500)/1000);
-    const groups={2:[],3:[],4:[],5:[]};
-    pool.forEach(q=>(groups[q.set]||=[]).push(q));
-    Object.keys(groups).forEach(k=>groups[k].sort((a,b)=>scoreQ(b)-scoreQ(a)));
-
-    const setOrder=shuffle([2,3,4,5],seed+77);
-    const quotas={2:Math.floor(count/4),3:Math.floor(count/4),4:Math.floor(count/4),5:Math.floor(count/4)};
-    for(let i=0;i<count%4;i++)quotas[setOrder[i]]++;
-    const selected=[]; const topicCounts={}; const topicCap=count<=10?2:3;
-    const tryPush=(q,ignoreTopicCap=false)=>{
-      if(!q || selected.some(x=>x.id===q.id))return false;
-      if(!ignoreTopicCap && (topicCounts[q.topic]||0)>=topicCap)return false;
-      selected.push(q); topicCounts[q.topic]=(topicCounts[q.topic]||0)+1; return true;
+    const newPool=[],oldPool=[];
+    BANK.forEach(q=>{ (questionExposure(q,lastSeen,date).kind==='new'?newPool:oldPool).push(q); });
+    const scoreQ=(q)=>{
+      const exp=questionExposure(q,lastSeen,date);
+      const novelty=exp.never?24:Math.min(8,Number.isFinite(exp.days)?exp.days/7:8);
+      const review=exp.kind==='old'?Math.min(12,(wrong[q.id]||0)*3)+Math.min(4,exp.days/7):0;
+      return (weights[q.difficulty||1]||1)+novelty+review+((hashString(`${seed}|${q.id}`)%1500)/1000);
     };
-    for(const setNo of [2,3,4,5]){
-      let need=quotas[setNo];
-      for(const q of groups[setNo]){ if(need<=0)break; if(tryPush(q))need--; }
-      if(need>0){ for(const q of groups[setNo]){ if(need<=0)break; if(tryPush(q,true))need--; } }
+    const selected=[],topicCounts={},topicCap=count<=10?2:3;
+    let desiredNew=Math.round(count*requestedNewRatio/100);
+    desiredNew=Math.max(0,Math.min(count,desiredNew));
+    const desiredOld=count-desiredNew;
+    const addNew=balancedPick(newPool,desiredNew,seed+11,scoreQ,selected,topicCounts,topicCap);
+    const addOld=balancedPick(oldPool,desiredOld,seed+37,scoreQ,selected,topicCounts,topicCap);
+    if(selected.length<count){
+      balancedPick(newPool,count-selected.length,seed+71,scoreQ,selected,topicCounts,999);
+      balancedPick(oldPool,count-selected.length,seed+97,scoreQ,selected,topicCounts,999);
     }
     if(selected.length<count){
-      const fallback=[...pool].sort((a,b)=>scoreQ(b)-scoreQ(a));
-      for(const q of fallback){ if(selected.length>=count)break; tryPush(q,true); }
-    }
-    if(selected.length<count){
-      const fallback=[...BANK].sort((a,b)=>scoreQ(b)-scoreQ(a));
-      for(const q of fallback){ if(selected.length>=count)break; tryPush(q,true); }
+      const fallback=[...BANK].filter(q=>!selected.some(x=>x.id===q.id)).sort((a,b)=>scoreQ(b)-scoreQ(a));
+      for(const q of fallback){ if(selected.length>=count)break; selected.push(q); }
     }
     const finalSet=shuffle(selected.slice(0,count),seed+313);
-    localStorage.setItem(dailyKey(count,difficulty,attemptNo),JSON.stringify(finalSet.map(q=>q.id)));
+    const actualNew=finalSet.filter(q=>questionExposure(q,lastSeen,date).kind==='new').length;
+    finalSet._meta={requestedNewRatio,actualNewCount:actualNew,actualOldCount:count-actualNew,ratioMode:ratioInfo.mode,plan:ratioInfo.plan,newPoolSize:newPool.length,oldPoolSize:oldPool.length};
+    localStorage.setItem(dailyKey(count,difficulty,attemptNo,requestedNewRatio),JSON.stringify(finalSet.map(q=>q.id)));
     return finalSet;
   }
 
@@ -369,7 +487,7 @@
     $('estimateValue').textContent=estimate?estimate.score:'—';
     $('bankValue').textContent=BANK.length;
     $('daysDoneBadge').textContent=`${uniquePracticeDays(history).length} 天`;
-    $('todayTitle').textContent=`${formatDateCN()} · 今日一练`;
+    $('todayTitle').textContent=`${formatDateCN()} · 今日练习`;
     $('nicknameInput').value=getNickname()==='黑带冲刺学员'?'':getNickname();
     refreshCountdown(history,estimate);
     const activeState=getActiveState();
@@ -377,20 +495,52 @@
     const settingsCount=activeState?(activeState.total||activeState.qids?.length||getDailyCount()):getDailyCount();
     const settingsDifficulty=activeState?(activeState.difficulty||getDifficulty()):getDifficulty();
     const activeAttempt=activeState?(activeState.attemptNo||attempts.length+1):attempts.length+1;
+    const ratioInfo=activeState?{ratio:activeState.requestedNewRatio??targetNewRatio(settingsCount,activeAttempt,history).ratio,mode:activeState.ratioMode||'auto',plan:coveragePlan(settingsCount,history)}:targetNewRatio(settingsCount,activeAttempt,history);
+    const plan=ratioInfo.plan||coveragePlan(settingsCount,history);
+
     $('dailyCountSelect').value=String(settingsCount);
     $('difficultySelect').value=settingsDifficulty;
+    $('themeSelect').value=getTheme();
     $('dailyCountSelect').disabled=active;
     $('difficultySelect').disabled=active;
-    $('practiceSettingHint').textContent=active?`第 ${activeAttempt} 轮练习进行中：${settingsCount}题 · ${difficultyText(settingsDifficulty)}。完成本轮后可再次调整。`:`今天将按 ${settingsCount} 题 · ${difficultyText(settingsDifficulty)} 出题；可多轮练习。`;
+    $('themeSelect').disabled=false;
+
+    const ratio=Math.max(0,Math.min(100,ratioInfo.ratio));
+    $('smartMixBadge').textContent=`${ratio}% 新题`;
+    $('mixTrackNew').style.width=`${ratio}%`;
+    $('coverageText').textContent=`题库覆盖 ${plan.seenCount}/${BANK.length}`;
+    $('weekAvgText').textContent=plan.avg===null?'近7天日均 — 题':`近7天日均 ${plan.avg.toFixed(1)} 题`;
+    let reason='默认按 80% 新题 / 20% 旧题推进';
+    if(plan.avg!==null && plan.avg<10)reason='最近练习量偏少，提高新题比例，加快覆盖';
+    if(plan.avg!==null && plan.avg>10)reason='最近练习量较高，适度增加旧题复习';
+    if(plan.urgencyRaised)reason=`为考前覆盖全题库，已提高新题比例；建议每天至少 ${plan.requiredNewPerDay} 道新题`;
+    if(ratioInfo.mode==='manual')reason='第二轮起采用你手动设置的新旧题比例';
+    $('smartMixReason').textContent=reason;
+
+    const ratioControl=$('ratioControl');
+    ratioControl.hidden=active || attempts.length<1;
+    const manual=getManualNewRatio();
+    const sliderValue=manual===null?coveragePlan(settingsCount,history).ratio:manual;
+    $('newRatioRange').value=String(sliderValue);
+    $('ratioValue').textContent=`${sliderValue}% 新 / ${100-sliderValue}% 旧`;
+
+    if(active){
+      const nr=activeState.requestedNewRatio??ratio;
+      $('practiceSettingHint').textContent=`第 ${activeAttempt} 轮进行中：${settingsCount}题 · ${difficultyText(settingsDifficulty)} · 目标 ${nr}% 新题。完成本轮后可再次调整。`;
+    }else if(attempts.length>=1){
+      $('practiceSettingHint').textContent=`准备第 ${activeAttempt} 轮：${settingsCount}题 · ${difficultyText(settingsDifficulty)}。第二轮起可用滚动条决定推进新题还是加强复习。`;
+    }else{
+      $('practiceSettingHint').textContent=`首轮自动推进：${settingsCount}题 · ${difficultyText(settingsDifficulty)} · 约 ${ratio}% 新题 / ${100-ratio}% 旧题。`;
+    }
     $('startBtn').hidden=false;
     $('startBtn').textContent=active?`继续第 ${activeAttempt} 轮 · ${settingsCount}题`:`开始第 ${attempts.length+1} 轮 · ${settingsCount}题`;
     if(best){
       $('resumeBtn').hidden=false; $('resumeBtn').textContent=`查看今日最高分 · ${best.score}分`;
-      $('todayDesc').textContent=`今天已完成 ${attempts.length} 轮，最高 ${best.score} 分。可以继续练习；生成打卡图时自动采用当天最高分。`;
+      $('todayDesc').textContent=`今天已完成 ${attempts.length} 轮，最高 ${best.score} 分。继续练习时可自行调节新旧题比例；打卡图自动采用当天最高分。`;
     }else{
       $('resumeBtn').hidden=true;
       const minM=Math.max(4,Math.round(settingsCount*.9)), maxM=Math.max(minM+2,Math.round(settingsCount*1.4));
-      $('todayDesc').textContent=`从四套模拟题中按“${difficultyLabel(settingsDifficulty)}”难度抽取 ${settingsCount} 道，约 ${minM}–${maxM} 分钟完成。`;
+      $('todayDesc').textContent=`首轮优先推进过去 4 周未出现的新题，约 ${minM}–${maxM} 分钟完成。`;
     }
     if(!estimate){ $('trendEmpty').hidden=false; $('trendContent').hidden=true; }
     else{
@@ -406,28 +556,34 @@
   function startQuiz(){
     let saved=getActiveState();
     let qs=[], count=getDailyCount(), difficulty=getDifficulty(), attemptNo=getTodayAttempts().length+1;
+    let requestedNewRatio=80, ratioMode='auto', actualNewCount=null, actualOldCount=null;
     if(saved && Array.isArray(saved.qids) && saved.qids.length){
       qs=saved.qids.map(id=>BANK.find(q=>q.id===id)).filter(Boolean);
       if(qs.length===saved.qids.length){
         count=saved.total||qs.length; difficulty=saved.difficulty||difficulty; attemptNo=saved.attemptNo||attemptNo;
+        requestedNewRatio=saved.requestedNewRatio??targetNewRatio(count,attemptNo).ratio;
+        ratioMode=saved.ratioMode||'auto'; actualNewCount=saved.actualNewCount??null; actualOldCount=saved.actualOldCount??null;
       }else saved=null;
     }
     if(!saved){
       attemptNo=getTodayAttempts().length+1;
       count=getDailyCount(); difficulty=getDifficulty();
       qs=buildDailySet(count,difficulty,attemptNo);
+      const meta=qs._meta||{};
+      requestedNewRatio=meta.requestedNewRatio??targetNewRatio(count,attemptNo).ratio;
+      ratioMode=meta.ratioMode||'auto'; actualNewCount=meta.actualNewCount??null; actualOldCount=meta.actualOldCount??null;
     }
     if(!qs.length){ showToast('题库加载失败，请强制刷新页面后重试'); return; }
     if(saved){
-      quiz={questions:qs,answers:Array.isArray(saved.answers)?saved.answers:Array(qs.length).fill(null),index:Math.min(saved.index||0,qs.length-1),startTime:saved.startTime||Date.now(),difficulty,attemptNo};
+      quiz={questions:qs,answers:Array.isArray(saved.answers)?saved.answers:Array(qs.length).fill(null),index:Math.min(saved.index||0,qs.length-1),startTime:saved.startTime||Date.now(),difficulty,attemptNo,requestedNewRatio,ratioMode,actualNewCount,actualOldCount};
       if(quiz.answers.length!==qs.length)quiz.answers=Array(qs.length).fill(null);
     }else{
-      quiz={questions:qs,answers:Array(qs.length).fill(null),index:0,startTime:Date.now(),difficulty,attemptNo};
+      quiz={questions:qs,answers:Array(qs.length).fill(null),index:0,startTime:Date.now(),difficulty,attemptNo,requestedNewRatio,ratioMode,actualNewCount,actualOldCount};
       persistQuiz();
     }
     showView('quizView'); renderQuestion(); startTimer();
   }
-  function persistQuiz(){ if(!quiz)return; localStorage.setItem(activeKey(),JSON.stringify({qids:quiz.questions.map(q=>q.id),answers:quiz.answers,index:quiz.index,startTime:quiz.startTime,total:quiz.questions.length,difficulty:quiz.difficulty||getDifficulty(),attemptNo:quiz.attemptNo||1})); }
+  function persistQuiz(){ if(!quiz)return; localStorage.setItem(activeKey(),JSON.stringify({qids:quiz.questions.map(q=>q.id),answers:quiz.answers,index:quiz.index,startTime:quiz.startTime,total:quiz.questions.length,difficulty:quiz.difficulty||getDifficulty(),attemptNo:quiz.attemptNo||1,requestedNewRatio:quiz.requestedNewRatio??80,ratioMode:quiz.ratioMode||'auto',actualNewCount:quiz.actualNewCount,actualOldCount:quiz.actualOldCount})); }
   function startTimer(){ clearInterval(timerHandle); const update=()=>{ if(!quiz)return; const sec=Math.floor((Date.now()-quiz.startTime)/1000); $('timerText').textContent=`${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`; }; update(); timerHandle=setInterval(update,1000); }
   function stopTimer(){clearInterval(timerHandle);timerHandle=null;}
 
@@ -457,7 +613,7 @@
     stopTimer();
     const items=quiz.questions.map((q,i)=>({id:q.id,answer:quiz.answers[i],correct:quiz.answers[i]===q.answer}));
     const correct=items.filter(x=>x.correct).length; const total=items.length; const score=Math.round(correct/Math.max(1,total)*100); const elapsed=Math.max(1,Math.round((Date.now()-quiz.startTime)/1000));
-    const record={date:localDateKey(),attemptNo:quiz.attemptNo||getTodayAttempts().length+1,completedAt:Date.now(),score,correct,total,elapsed,difficulty:quiz.difficulty||getDifficulty(),qids:quiz.questions.map(q=>q.id),items};
+    const record={date:localDateKey(),attemptNo:quiz.attemptNo||getTodayAttempts().length+1,completedAt:Date.now(),score,correct,total,elapsed,difficulty:quiz.difficulty||getDifficulty(),requestedNewRatio:quiz.requestedNewRatio??80,ratioMode:quiz.ratioMode||'auto',actualNewCount:quiz.actualNewCount,actualOldCount:quiz.actualOldCount,theme:getTheme(),qids:quiz.questions.map(q=>q.id),items};
     const history=getHistory(); history.push(record); history.sort((a,b)=>a.date.localeCompare(b.date)||((a.attemptNo||1)-(b.attemptNo||1))||((a.completedAt||0)-(b.completedAt||0))); saveHistory(history);
     localStorage.removeItem(activeKey());
     renderResult(record);
@@ -474,7 +630,7 @@
     if(record.correct===record.total)return '今日全对。下一步不要只重复熟题，继续轮换 Measure、Analyze、Improve 等高权重模块，避免“熟题高分假象”。'+riskText;
     const prefix=record.score>=80?'基础已经比较稳，':'目前还有明显得分空间，';
     const detail=focus.length?`先把 ${focus.join('、')} 的错题重新做一遍，重点确认“为什么其他选项不对”。`:'先回看今日错题。';
-    return prefix+detail+riskText+` 明天会按你设置的题量与难度优先覆盖未做题；题库轮完后会提高历史错题的出现概率。`;
+    return prefix+detail+riskText+` 系统会按最近 7 天练习量和考试倒计时动态安排新旧题，优先确保考前把题库完整过一遍。`;
   }
 
   function renderKnowledgeReview(record){
@@ -511,7 +667,8 @@
     $('elapsedValue').textContent=formatElapsed(record.elapsed||0);
     $('resultHeadline').textContent=record.score>=90?'状态很好，保持手感':record.score>=70?'今天这轮过关':'今天的错题很值钱';
     const bestToday=getBestToday(); const attemptsToday=getTodayAttempts();
-    $('resultSummary').textContent=(estimate?`按 CSSBB BOK 模块权重校正后的滚动实考预估 ${estimate.score} 分，当前区间约 ${estimate.low}–${estimate.high}。`:'完成更多练习后会生成滚动预估。')+` 今日第 ${record.attemptNo||1} 轮；已完成 ${attemptsToday.length} 轮，最高 ${bestToday?bestToday.score:record.score} 分。`;
+    const mixText=Number.isFinite(record.actualNewCount)?` 本轮新题 ${record.actualNewCount} 道、旧题 ${record.actualOldCount||0} 道。`:'';
+    $('resultSummary').textContent=(estimate?`按 CSSBB BOK 模块权重校正后的滚动实考预估 ${estimate.score} 分，当前区间约 ${estimate.low}–${estimate.high}。`:'完成更多练习后会生成滚动预估。')+` 今日第 ${record.attemptNo||1} 轮；已完成 ${attemptsToday.length} 轮，最高 ${bestToday?bestToday.score:record.score} 分。`+mixText;
     renderChips($('resultFocusTags'),focus);
     $('reviewAdvice').textContent=adviceFor(record,focus);
     renderKnowledgeReview(record);
@@ -768,19 +925,19 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
   function roundRect(ctx,x,y,w,h,r){ r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath(); }
 
   async function makeCheckin(record){
-    const history=getHistory(); const estimate=computeEstimate(history); const focus=resultFocus(record); const streak=calcStreak(history); const nick=getNickname(); const cd=examCountdown();
+    const history=getHistory(); const estimate=computeEstimate(history); const focus=resultFocus(record); const streak=calcStreak(history); const nick=getNickname(); const cd=examCountdown(); const activeTheme=getTheme(); const theme=THEMES[activeTheme]||THEMES.default;
     const c=document.createElement('canvas'); c.width=1080;c.height=1440; const ctx=c.getContext('2d');
-    const g=ctx.createLinearGradient(0,0,1080,1440); g.addColorStop(0,'#0f172a');g.addColorStop(.62,'#172554');g.addColorStop(1,'#1d4ed8');ctx.fillStyle=g;ctx.fillRect(0,0,c.width,c.height);
+    const g=ctx.createLinearGradient(0,0,1080,1440); g.addColorStop(0,theme.bg1);g.addColorStop(.62,theme.bg2);g.addColorStop(1,theme.bg3);ctx.fillStyle=g;ctx.fillRect(0,0,c.width,c.height);
     ctx.fillStyle='rgba(255,255,255,.08)'; for(let i=0;i<7;i++){ctx.beginPath();ctx.arc(920-i*145,180+i*180,110+i*16,0,Math.PI*2);ctx.fill();}
     ctx.fillStyle='#fff';ctx.font='800 42px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText('黑带备考冲刺 · 每日一练',76,105);
     ctx.fillStyle='#cbd5e1';ctx.font='500 25px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText(`${formatDateCN(record.date)}  ·  ${nick}`,76,153);
-    if(cd){ ctx.fillStyle='#93c5fd';ctx.font='700 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif'; const cdText=cd.days>0?`距考试 ${cd.days} 天 · ${cd.phase.label} · ${formatDateCN(cd.key)}`:cd.days===0?`今天考试 · ${formatDateCN(cd.key)}`:`考试日期已过 ${Math.abs(cd.days)} 天`;ctx.fillText(cdText,76,192); }
+    if(cd){ ctx.fillStyle=theme.soft;ctx.font='700 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif'; const cdText=cd.days>0?`距考试 ${cd.days} 天 · ${cd.phase.label} · ${formatDateCN(cd.key)}`:cd.days===0?`今天考试 · ${formatDateCN(cd.key)}`:`考试日期已过 ${Math.abs(cd.days)} 天`;ctx.fillText(cdText,76,192); }
     if(isAiReady()){
       ctx.font='800 20px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif'; const label='AI 加持 · 已开启'; const w=ctx.measureText(label).width+40;
       ctx.fillStyle='rgba(124,58,237,.88)';roundRect(ctx,1004-w,82,w,42,21);ctx.fill();ctx.fillStyle='#fff';ctx.fillText(label,1024-w,110);
     }
     ctx.fillStyle='rgba(255,255,255,.10)';roundRect(ctx,76,220,928,410,42);ctx.fill();
-    ctx.fillStyle='#93c5fd';ctx.font='700 25px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText('今日得分',130,300);
+    ctx.fillStyle=theme.soft;ctx.font='700 25px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText('今日得分',130,300);
     ctx.fillStyle='#fff';ctx.font='900 150px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';ctx.fillText(String(record.score),122,465);
     ctx.font='700 34px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText('分',360,463);
     ctx.fillStyle='#cbd5e1';ctx.font='600 27px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText(`答对 ${record.correct}/${record.total||10} · 今日最高分`,130,548);
@@ -794,11 +951,11 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
     ctx.fillStyle='rgba(255,255,255,.97)';roundRect(ctx,76,690,928,440,38);ctx.fill();
     ctx.fillStyle='#0f172a';ctx.font='800 34px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText('今天优先复习',126,770);
     const tags=focus.length?focus:['综合巩固']; let y=830;
-    tags.forEach((t,i)=>{ctx.font='700 25px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillStyle='#eff6ff';roundRect(ctx,126,y,Math.min(780,ctx.measureText(`${i+1}. ${t}`).width+70),62,31);ctx.fill();ctx.fillStyle='#1d4ed8';ctx.fillText(`${i+1}. ${t}`,153,y+40);y+=82;});
+    tags.forEach((t,i)=>{ctx.font='700 25px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillStyle=theme.soft;roundRect(ctx,126,y,Math.min(780,ctx.measureText(`${i+1}. ${t}`).width+70),62,31);ctx.fill();ctx.fillStyle=theme.accent;ctx.fillText(`${i+1}. ${t}`,153,y+40);y+=82;});
     ctx.fillStyle='#475569';ctx.font='500 24px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';
     wrapText(ctx,record.score===100?'今天全对。继续保持题感，同时把统计、DOE、SPC 等高区分度模块轮换复习。':'错题不是损失，是冲刺阶段最便宜的得分点。把原因弄清楚，明天再遇到就不丢分。',126,1070,810,38,3);
-    ctx.fillStyle='#cbd5e1';ctx.font='600 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText(`四套模拟题 · CSSBB BOK加权复盘 · 今日${record.total||10}题 · ${difficultyLabel(record.difficulty||'medium')}难度`,76,1312);
-    ctx.fillStyle='#93c5fd';ctx.font='800 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText('BLACK BELT SPRINT · V2.4 MULTI-ROUND',76,1352);
+    ctx.fillStyle='#cbd5e1';ctx.font='600 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText(`四套模拟题 · 今日${record.total||10}题 · ${difficultyLabel(record.difficulty||'medium')}难度 · ${record.actualNewCount??'—'}新/${record.actualOldCount??'—'}旧`,76,1312);
+    ctx.fillStyle=theme.soft;ctx.font='800 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText(`BLACK BELT SPRINT · V2.5 · ${themeLabel(activeTheme)}`,76,1352);
     return new Promise(resolve=>c.toBlob(b=>resolve({blob:b,url:URL.createObjectURL(b)}),'image/png',.95));
   }
 
@@ -841,7 +998,7 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
     $('prevBtn').addEventListener('click',()=>go(-1)); $('nextBtn').addEventListener('click',()=>go(1)); $('submitBtn').addEventListener('click',submitQuiz);
     $('quitQuizBtn').addEventListener('click',()=>{persistQuiz();stopTimer();showView('homeView');refreshHome();});
     $('backHomeBtn').addEventListener('click',()=>{showView('homeView');refreshHome();});
-    if($('newAttemptBtn'))$('newAttemptBtn').addEventListener('click',()=>{showView('homeView');refreshHome();setTimeout(startQuiz,60);});
+    if($('newAttemptBtn'))$('newAttemptBtn').addEventListener('click',()=>{showView('homeView');refreshHome();showToast('第二轮起可先调节新旧题比例，再开始练习');});
     $('dailyCountSelect').addEventListener('change',e=>{
       const n=Number(e.target.value); if([5,10,15,20].includes(n))localStorage.setItem(STORAGE.dailyCount,String(n));
       refreshHome(); showToast(`每日题量已设为 ${getDailyCount()} 题`);
@@ -849,6 +1006,18 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
     $('difficultySelect').addEventListener('change',e=>{
       const v=e.target.value; if(['low','medium','high'].includes(v))localStorage.setItem(STORAGE.difficulty,v);
       refreshHome(); showToast(`练习难度已设为 ${difficultyLabel(getDifficulty())}`);
+    });
+    $('themeSelect').addEventListener('change',e=>{
+      const v=e.target.value; if(THEMES[v])localStorage.setItem(STORAGE.theme,v);
+      applyTheme(); refreshHome(); showToast(`界面主题：${themeLabel()}`);
+    });
+    $('newRatioRange').addEventListener('input',e=>{
+      const n=Math.max(0,Math.min(100,Number(e.target.value)||0));
+      saveManualNewRatio(n);
+      $('ratioValue').textContent=`${n}% 新 / ${100-n}% 旧`;
+      $('smartMixBadge').textContent=`${n}% 新题`;
+      $('mixTrackNew').style.width=`${n}%`;
+      $('smartMixReason').textContent='第二轮起采用你手动设置的新旧题比例';
     });
     $('saveNicknameBtn').addEventListener('click',()=>{const v=$('nicknameInput').value.trim();localStorage.setItem(STORAGE.nickname,v||'黑带冲刺学员');showToast('昵称已保存');});
     $('checkinBtn').addEventListener('click',openCheckin); $('shareImageBtn').addEventListener('click',shareImage); $('downloadImageBtn').addEventListener('click',downloadImage);
@@ -870,7 +1039,7 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
   }
 
   function init(){
-    $('bankValue').textContent=BANK.length; bind();setupInstall();refreshHome();
+    applyTheme(); $('bankValue').textContent=BANK.length; bind();setupInstall();refreshHome();
     if(!BANK.length){ showToast('题库未加载，请检查 questions.js 是否已部署并强制刷新'); $('startBtn').disabled=true; }
     if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
   }

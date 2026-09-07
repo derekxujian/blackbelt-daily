@@ -20,3 +20,39 @@
 
 /* V2.4 multi-round practice */
 .triple-actions{grid-template-columns:1.35fr 1fr 1fr}.checkin-best-note{text-align:center;line-height:1.5;margin:8px 4px 0}.hero-card .secondary-btn{margin-top:8px}@media(max-width:520px){.triple-actions{grid-template-columns:1fr 1fr}.triple-actions #checkinBtn{grid-column:1/-1}}@media(max-width:380px){.triple-actions{grid-template-columns:1fr}}
+
+/* V2.5 smart coverage + selectable themes */
+:root{
+  --hero1:#0f172a;--hero2:#172554;--hero3:#1d4ed8;--brand-bg:#0f172a;
+  --topbar-bg:rgba(244,247,251,.92);--theme-glyph:"BB";--theme-soft:#eff6ff;
+}
+html[data-theme="anime"]{--bg:#fff7fb;--ink:#3b284d;--muted:#75647f;--line:#f0d9e8;--accent:#db2777;--accent2:#6d28d9;--hero1:#4c1d95;--hero2:#7c3aed;--hero3:#0891b2;--brand-bg:#db2777;--topbar-bg:rgba(255,247,251,.92);--theme-glyph:"✦";--theme-soft:#fce7f3}
+html[data-theme="scifi"]{--bg:#effcff;--ink:#083344;--muted:#52727b;--line:#c9edf2;--accent:#0891b2;--accent2:#0f172a;--hero1:#020617;--hero2:#083344;--hero3:#0e7490;--brand-bg:#083344;--topbar-bg:rgba(239,252,255,.92);--theme-glyph:"◈";--theme-soft:#cffafe}
+html[data-theme="scholar"]{--bg:#fffdf5;--ink:#172554;--muted:#6b7280;--line:#e8e1c8;--accent:#1d4ed8;--accent2:#172554;--hero1:#172554;--hero2:#1e3a8a;--hero3:#a16207;--brand-bg:#172554;--topbar-bg:rgba(255,253,245,.94);--theme-glyph:"∑";--theme-soft:#fef3c7}
+html[data-theme="chinese"]{--bg:#fbf7ef;--ink:#3f1d1d;--muted:#76645e;--line:#eadfd1;--accent:#b91c1c;--accent2:#3f1d1d;--hero1:#3f1d1d;--hero2:#7f1d1d;--hero3:#a16207;--brand-bg:#7f1d1d;--topbar-bg:rgba(251,247,239,.94);--theme-glyph:"山";--theme-soft:#fee2e2}
+html[data-theme="nezha"]{--bg:#fff7ed;--ink:#431407;--muted:#7c5b4a;--line:#fed7aa;--accent:#ea580c;--accent2:#7f1d1d;--hero1:#450a0a;--hero2:#991b1b;--hero3:#ea580c;--brand-bg:#991b1b;--topbar-bg:rgba(255,247,237,.94);--theme-glyph:"焰";--theme-soft:#ffedd5}
+html[data-theme="odyssey"]{--bg:#f4f9fb;--ink:#0c4a6e;--muted:#607782;--line:#d4e4ea;--accent:#0284c7;--accent2:#0c4a6e;--hero1:#0c4a6e;--hero2:#075985;--hero3:#b45309;--brand-bg:#0c4a6e;--topbar-bg:rgba(244,249,251,.94);--theme-glyph:"Ω";--theme-soft:#fef3c7}
+html,body{background:var(--bg)}
+.topbar{background:var(--topbar-bg)}
+.brand-mark{background:var(--brand-bg)}
+.hero-card,.result-hero{background:linear-gradient(145deg,var(--hero1),var(--hero2) 72%,var(--hero3));position:relative;overflow:hidden}
+.hero-card::after{content:var(--theme-glyph);position:absolute;right:22px;top:18px;font-size:88px;font-weight:950;line-height:1;color:rgba(255,255,255,.055);pointer-events:none;transform:rotate(-7deg)}
+.primary-btn{background:var(--accent)}
+.progress-bar{background:var(--accent)}
+.option-btn.selected{border-color:var(--accent);background:var(--theme-soft)}
+.option-btn.selected .letter{background:var(--accent)}
+.badge{background:var(--theme-soft);color:var(--accent)}
+.countdown-number{color:var(--accent)}
+.countdown-card{border-color:color-mix(in srgb,var(--accent) 24%,#fff);background:linear-gradient(145deg,var(--theme-soft),#fff 55%,color-mix(in srgb,var(--hero3) 7%,#fff))}
+.theme-setting-row{margin-top:10px}.theme-setting-item{background:rgba(255,255,255,.88)}
+.smart-mix-card{margin:12px 0 10px;padding:13px 14px;border-radius:16px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.13)}
+.smart-mix-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.smart-mix-head>div{display:grid;gap:3px}.smart-mix-head strong{font-size:12px}.smart-mix-head span{font-size:10px;color:#cbd5e1}.mix-badge{background:rgba(255,255,255,.14);color:#fff!important;padding:5px 8px;border-radius:999px;font-size:10px!important;font-weight:850;white-space:nowrap}.mix-track{height:7px;border-radius:999px;background:rgba(255,255,255,.14);overflow:hidden;margin-top:10px}.mix-track span{display:block;height:100%;background:linear-gradient(90deg,#fff,var(--theme-soft));border-radius:999px;transition:width .2s}.mix-meta{display:flex;justify-content:space-between;gap:8px;margin-top:7px;color:#cbd5e1;font-size:9.5px}
+.ratio-control{margin:11px 0 8px;padding:13px;border-radius:16px;background:rgba(255,255,255,.93);color:var(--ink);border:1px solid color-mix(in srgb,var(--accent) 24%,#fff)}.ratio-control-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.ratio-control-head strong{font-size:11px}.ratio-control-head span{font-size:10px;font-weight:850;color:var(--accent);white-space:nowrap}.ratio-control input[type="range"]{width:100%;accent-color:var(--accent);margin:12px 0 3px}.ratio-scale{display:flex;justify-content:space-between;color:var(--muted);font-size:9px}.ratio-control p{margin:7px 0 0;line-height:1.45;color:var(--muted)!important}
+html[data-theme="anime"] .hero-card::before{content:"✧  ✦  ◌";position:absolute;right:18px;bottom:14px;color:rgba(255,255,255,.18);font-size:26px;letter-spacing:8px}
+html[data-theme="scifi"] .hero-card{background-image:linear-gradient(rgba(34,211,238,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(34,211,238,.07) 1px,transparent 1px),linear-gradient(145deg,var(--hero1),var(--hero2) 72%,var(--hero3));background-size:24px 24px,24px 24px,auto}
+html[data-theme="scholar"] .hero-card::before{content:"A+  ✓";position:absolute;right:24px;bottom:20px;color:rgba(255,255,255,.10);font-size:30px;font-weight:900;transform:rotate(-5deg)}
+html[data-theme="chinese"] body,html[data-theme="nezha"] body{font-family:"Songti SC","STSong","PingFang SC",-apple-system,BlinkMacSystemFont,sans-serif}
+html[data-theme="chinese"] .hero-card::before{content:"丹青 · 笃行";position:absolute;right:24px;bottom:18px;color:rgba(255,255,255,.13);font-size:18px;letter-spacing:5px}
+html[data-theme="nezha"] .hero-card::before{content:"破浪 · 冲刺";position:absolute;right:22px;bottom:18px;color:rgba(255,235,210,.16);font-size:19px;font-weight:900;letter-spacing:4px}
+html[data-theme="odyssey"] .hero-card::before{content:"ΚΛΕΟΣ  ·  ODYSSEY";position:absolute;right:22px;bottom:18px;color:rgba(255,255,255,.13);font-size:16px;letter-spacing:3px}
+@media(max-width:430px){.smart-mix-head{align-items:center}.mix-meta{font-size:9px}.ratio-control-head{align-items:flex-start;flex-direction:column;gap:3px}.theme-setting-row{margin-top:8px}}

@@ -20,7 +20,7 @@
         <div class="brand-mark">BB</div>
         <div>
           <div class="brand-title">黑带备考冲刺</div>
-          <div class="brand-subtitle">多轮练习 · 自选题量 · 分级难度 · 最高分打卡</div>
+          <div class="brand-subtitle">智能新题推进 · 多轮练习 · 主题换肤 · 最高分打卡</div>
         </div>
       </div>
       <div class="top-actions">
@@ -67,7 +67,7 @@
         <div class="hero-card">
           <div class="eyebrow">TODAY</div>
           <h1 id="todayTitle">今日一练</h1>
-          <p id="todayDesc" class="muted">从四套模拟题中按你的设置生成今日练习。</p>
+          <p id="todayDesc" class="muted">从四套模拟题中按你的设置生成练习，并优先推进过去 4 周未出现的新题。</p>
           <div class="practice-settings" aria-label="今日练习设置">
             <label class="practice-setting-item">
               <span>每日题量</span>
@@ -86,6 +86,37 @@
                 <option value="high">高 · 高难挑战</option>
               </select>
             </label>
+          </div>
+          <div class="theme-setting-row">
+            <label class="practice-setting-item theme-setting-item">
+              <span>界面主题</span>
+              <select id="themeSelect" class="practice-select">
+                <option value="default">默认 · 专业蓝</option>
+                <option value="anime">二次元 · 轻快</option>
+                <option value="scifi">科幻 · 霓虹</option>
+                <option value="scholar">学霸 · 纸笔</option>
+                <option value="chinese">中国风 · 丹青</option>
+                <option value="nezha">哪吒 · 国潮神话</option>
+                <option value="odyssey">古希腊 · 奥德赛</option>
+              </select>
+            </label>
+          </div>
+          <div id="smartMixCard" class="smart-mix-card">
+            <div class="smart-mix-head">
+              <div>
+                <strong>智能新题推进</strong>
+                <span id="smartMixReason">默认优先推进新题</span>
+              </div>
+              <span id="smartMixBadge" class="mix-badge">80% 新题</span>
+            </div>
+            <div class="mix-track"><span id="mixTrackNew" style="width:80%"></span></div>
+            <div class="mix-meta"><span id="coverageText">题库覆盖 0/81</span><span id="weekAvgText">近7天日均 — 题</span></div>
+          </div>
+          <div id="ratioControl" class="ratio-control" hidden>
+            <div class="ratio-control-head"><strong>第二轮起：自己选新旧题比例</strong><span id="ratioValue">80% 新 / 20% 旧</span></div>
+            <input id="newRatioRange" type="range" min="0" max="100" step="10" value="80" />
+            <div class="ratio-scale"><span>多复习旧题</span><span>均衡</span><span>多推进新题</span></div>
+            <p class="muted tiny">“新题”= 过去 4 周未出现过；如果新题库存不足，会自动用旧题补足。</p>
           </div>
           <p id="practiceSettingHint" class="muted tiny practice-setting-hint">今天将按 10 题 · 标准难度出题。</p>
           <div class="stat-grid">
@@ -143,9 +174,9 @@
 
         <details class="panel details-panel">
           <summary>关于题库、AI 与考试预估</summary>
-          <p>当前 V2.4 从你提供的四套模拟题中先纳入 81 道文字清晰、无需依赖复杂图表的题目，并保留原模拟题编号。扫描不清、图表依赖强或容易因 OCR 产生歧义的题暂未纳入。</p>
+          <p>当前 V2.5 从你提供的四套模拟题中先纳入 81 道文字清晰、无需依赖复杂图表的题目，并保留原模拟题编号。扫描不清、图表依赖强或容易因 OCR 产生歧义的题暂未纳入。</p>
           <p>新增本地“黑带知识库”：以 CSSBB Body of Knowledge 为考试范围与权重框架，并结合《The Certified Six Sigma Black Belt Handbook》第三版和《注册六西格玛黑带手册》第二版整理成概念、公式、易错点和复习抓手。知识库完全离线可用。</p>
-          <p>每日题量可设为 5 / 10 / 15 / 20 题，难度可选低 / 中 / 高；同一天可连续练习多轮，打卡图自动采用当天最高分。难度采用题库难度标签进行加权抽题，并优先轮换未做题。基础模式完全不需要 AI 或 API Key。只有学员主动开启 AI 学习助手后，才会把必要的题目、答题结果、学习表现，以及对应的本地知识库摘要发送给所选 AI 服务商。</p>
+          <p>每日题量可设为 5 / 10 / 15 / 20 题，难度可选低 / 中 / 高；同一天可连续练习多轮，打卡图自动采用当天最高分。首轮练习会优先推进新题：默认约 80% 为过去 4 周未出现的题；系统会结合最近 7 天练习量和考试倒计时动态调整。第二轮起可以手动选择新旧题比例。难度采用题库难度标签进行加权抽题。基础模式完全不需要 AI 或 API Key。只有学员主动开启 AI 学习助手后，才会把必要的题目、答题结果、学习表现，以及对应的本地知识库摘要发送给所选 AI 服务商。</p>
           <p>“实考预估分”现在加入 CSSBB BOK 的 150 题模块权重进行加权，同时结合近期表现和样本量给出区间。它用于冲刺趋势判断，不等同任何认证机构的官方换算分。</p>
         </details>
       </section>
@@ -224,7 +255,7 @@
           <button id="newAttemptBtn" class="secondary-btn">再练一次</button>
           <button id="backHomeBtn" class="secondary-btn">回到首页</button>
         </div>
-        <p class="muted tiny checkin-best-note">同一天可练习多轮；打卡图片自动采用当天最高分，并显示连续打卡天数。</p>
+        <p class="muted tiny checkin-best-note">同一天可练习多轮；第二轮起可自选新旧题比例。打卡图片自动采用当天最高分，并显示连续打卡天数。</p>
       </section>
     </main>
 
