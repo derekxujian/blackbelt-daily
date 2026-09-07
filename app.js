@@ -13,8 +13,8 @@
     difficulty: 'bb_difficulty_v3',
     theme: 'bb_theme_v25',
     newRatioPrefix: 'bb_new_ratio_v25_',
-    activePrefix: 'bb_active_',
-    dailyPrefix: 'bb_dailyset_v25_',
+    activePrefix: 'bb_active_v251_',
+    dailyPrefix: 'bb_dailyset_v251_',
     aiConfig: 'bb_ai_config_v2',
     aiKeyLocal: 'bb_ai_key_local_v2',
     aiKeySession: 'bb_ai_key_session_v2',
@@ -331,13 +331,19 @@
     const history=getHistory();
     const ratioInfo=targetNewRatio(count,attemptNo,history);
     const requestedNewRatio=ratioInfo.ratio;
+    const strictNeverMode=requestedNewRatio===100;
+    const globallySeen=globallySeenIds(history);
     const stored=localStorage.getItem(dailyKey(count,difficulty,attemptNo,requestedNewRatio));
     if(stored){
       try{
         const ids=JSON.parse(stored); const qs=ids.map(id=>BANK.find(q=>q.id===id)).filter(Boolean);
-        if(qs.length===count){
-          const lastSeen=questionLastSeenMap(history); const actualNew=qs.filter(q=>questionExposure(q,lastSeen).kind==='new').length;
-          qs._meta={requestedNewRatio,actualNewCount:actualNew,actualOldCount:count-actualNew,ratioMode:ratioInfo.mode,plan:ratioInfo.plan}; return qs;
+        const validLength=strictNeverMode?(qs.length>0 && qs.length<=count):(qs.length===count);
+        const validStrict=!strictNeverMode || qs.every(q=>!globallySeen.has(q.id));
+        if(validLength && validStrict){
+          const lastSeen=questionLastSeenMap(history);
+          const actualNew=strictNeverMode?qs.length:qs.filter(q=>questionExposure(q,lastSeen).kind==='new').length;
+          qs._meta={requestedNewRatio,actualNewCount:actualNew,actualOldCount:qs.length-actualNew,ratioMode:ratioInfo.mode,plan:ratioInfo.plan,strictNeverMode,requestedCount:count,availableNeverSeen:BANK.length-globallySeen.size,truncated:strictNeverMode&&qs.length<count};
+          return qs;
         }
       }catch{}
     }
@@ -346,20 +352,39 @@
     const wrong=weightedWrongCounts(history);
     const lastSeen=questionLastSeenMap(history);
     const weights=difficultyWeights(difficulty);
-    const newPool=[],oldPool=[];
-    BANK.forEach(q=>{ (questionExposure(q,lastSeen,date).kind==='new'?newPool:oldPool).push(q); });
     const scoreQ=(q)=>{
       const exp=questionExposure(q,lastSeen,date);
       const novelty=exp.never?24:Math.min(8,Number.isFinite(exp.days)?exp.days/7:8);
       const review=exp.kind==='old'?Math.min(12,(wrong[q.id]||0)*3)+Math.min(4,exp.days/7):0;
       return (weights[q.difficulty||1]||1)+novelty+review+((hashString(`${seed}|${q.id}`)%1500)/1000);
     };
+
+    // 100% 新题是严格模式：只允许“从未做过”的题，不足时减少本轮题量，绝不拿旧题补位。
+    if(strictNeverMode){
+      const strictPool=BANK.filter(q=>!globallySeen.has(q.id));
+      const target=Math.min(count,strictPool.length);
+      const selected=[],topicCounts={},topicCap=count<=10?2:3;
+      balancedPick(strictPool,target,seed+11,scoreQ,selected,topicCounts,topicCap);
+      if(selected.length<target)balancedPick(strictPool,target-selected.length,seed+71,scoreQ,selected,topicCounts,999);
+      if(selected.length<target){
+        const fallback=strictPool.filter(q=>!selected.some(x=>x.id===q.id)).sort((a,b)=>scoreQ(b)-scoreQ(a));
+        for(const q of fallback){ if(selected.length>=target)break; selected.push(q); }
+      }
+      const finalSet=shuffle(selected.slice(0,target),seed+313);
+      finalSet._meta={requestedNewRatio,actualNewCount:finalSet.length,actualOldCount:0,ratioMode:ratioInfo.mode,plan:ratioInfo.plan,strictNeverMode:true,requestedCount:count,availableNeverSeen:strictPool.length,truncated:finalSet.length<count,newPoolSize:strictPool.length,oldPoolSize:BANK.length-strictPool.length};
+      localStorage.setItem(dailyKey(count,difficulty,attemptNo,requestedNewRatio),JSON.stringify(finalSet.map(q=>q.id)));
+      return finalSet;
+    }
+
+    // 0%–90% 模式沿用“过去 4 周未出现 = 新题”的定义；池子充足时严格按目标比例抽取。
+    const newPool=[],oldPool=[];
+    BANK.forEach(q=>{ (questionExposure(q,lastSeen,date).kind==='new'?newPool:oldPool).push(q); });
     const selected=[],topicCounts={},topicCap=count<=10?2:3;
     let desiredNew=Math.round(count*requestedNewRatio/100);
     desiredNew=Math.max(0,Math.min(count,desiredNew));
     const desiredOld=count-desiredNew;
-    const addNew=balancedPick(newPool,desiredNew,seed+11,scoreQ,selected,topicCounts,topicCap);
-    const addOld=balancedPick(oldPool,desiredOld,seed+37,scoreQ,selected,topicCounts,topicCap);
+    balancedPick(newPool,desiredNew,seed+11,scoreQ,selected,topicCounts,topicCap);
+    balancedPick(oldPool,desiredOld,seed+37,scoreQ,selected,topicCounts,topicCap);
     if(selected.length<count){
       balancedPick(newPool,count-selected.length,seed+71,scoreQ,selected,topicCounts,999);
       balancedPick(oldPool,count-selected.length,seed+97,scoreQ,selected,topicCounts,999);
@@ -370,7 +395,7 @@
     }
     const finalSet=shuffle(selected.slice(0,count),seed+313);
     const actualNew=finalSet.filter(q=>questionExposure(q,lastSeen,date).kind==='new').length;
-    finalSet._meta={requestedNewRatio,actualNewCount:actualNew,actualOldCount:count-actualNew,ratioMode:ratioInfo.mode,plan:ratioInfo.plan,newPoolSize:newPool.length,oldPoolSize:oldPool.length};
+    finalSet._meta={requestedNewRatio,actualNewCount:actualNew,actualOldCount:finalSet.length-actualNew,ratioMode:ratioInfo.mode,plan:ratioInfo.plan,strictNeverMode:false,requestedCount:count,truncated:false,newPoolSize:newPool.length,oldPoolSize:oldPool.length};
     localStorage.setItem(dailyKey(count,difficulty,attemptNo,requestedNewRatio),JSON.stringify(finalSet.map(q=>q.id)));
     return finalSet;
   }
@@ -492,7 +517,8 @@
     refreshCountdown(history,estimate);
     const activeState=getActiveState();
     const active=!!activeState;
-    const settingsCount=activeState?(activeState.total||activeState.qids?.length||getDailyCount()):getDailyCount();
+    const settingsCount=activeState?(activeState.requestedCount||activeState.total||activeState.qids?.length||getDailyCount()):getDailyCount();
+    const actualActiveCount=activeState?(activeState.total||activeState.qids?.length||settingsCount):settingsCount;
     const settingsDifficulty=activeState?(activeState.difficulty||getDifficulty()):getDifficulty();
     const activeAttempt=activeState?(activeState.attemptNo||attempts.length+1):attempts.length+1;
     const ratioInfo=activeState?{ratio:activeState.requestedNewRatio??targetNewRatio(settingsCount,activeAttempt,history).ratio,mode:activeState.ratioMode||'auto',plan:coveragePlan(settingsCount,history)}:targetNewRatio(settingsCount,activeAttempt,history);
@@ -506,7 +532,7 @@
     $('themeSelect').disabled=false;
 
     const ratio=Math.max(0,Math.min(100,ratioInfo.ratio));
-    $('smartMixBadge').textContent=`${ratio}% 新题`;
+    $('smartMixBadge').textContent=ratio===100?'100% 从未做过':`${ratio}% 新题`;
     $('mixTrackNew').style.width=`${ratio}%`;
     $('coverageText').textContent=`题库覆盖 ${plan.seenCount}/${BANK.length}`;
     $('weekAvgText').textContent=plan.avg===null?'近7天日均 — 题':`近7天日均 ${plan.avg.toFixed(1)} 题`;
@@ -514,7 +540,7 @@
     if(plan.avg!==null && plan.avg<10)reason='最近练习量偏少，提高新题比例，加快覆盖';
     if(plan.avg!==null && plan.avg>10)reason='最近练习量较高，适度增加旧题复习';
     if(plan.urgencyRaised)reason=`为考前覆盖全题库，已提高新题比例；建议每天至少 ${plan.requiredNewPerDay} 道新题`;
-    if(ratioInfo.mode==='manual')reason='第二轮起采用你手动设置的新旧题比例';
+    if(ratioInfo.mode==='manual')reason=ratio===100?'严格新题模式：只抽从未做过的题，不足不补旧题':'第二轮起采用你手动设置的新旧题比例';
     $('smartMixReason').textContent=reason;
 
     const ratioControl=$('ratioControl');
@@ -522,18 +548,18 @@
     const manual=getManualNewRatio();
     const sliderValue=manual===null?coveragePlan(settingsCount,history).ratio:manual;
     $('newRatioRange').value=String(sliderValue);
-    $('ratioValue').textContent=`${sliderValue}% 新 / ${100-sliderValue}% 旧`;
+    $('ratioValue').textContent=sliderValue===100?'100% 新 / 0% 旧（严格）':`${sliderValue}% 新 / ${100-sliderValue}% 旧`;
 
     if(active){
       const nr=activeState.requestedNewRatio??ratio;
-      $('practiceSettingHint').textContent=`第 ${activeAttempt} 轮进行中：${settingsCount}题 · ${difficultyText(settingsDifficulty)} · 目标 ${nr}% 新题。完成本轮后可再次调整。`;
+      $('practiceSettingHint').textContent=nr===100?`第 ${activeAttempt} 轮进行中：严格 100% 新题 · 本轮 ${actualActiveCount} 题，只出从未做过的题。`:`第 ${activeAttempt} 轮进行中：${actualActiveCount}题 · ${difficultyText(settingsDifficulty)} · 目标 ${nr}% 新题。完成本轮后可再次调整。`;
     }else if(attempts.length>=1){
       $('practiceSettingHint').textContent=`准备第 ${activeAttempt} 轮：${settingsCount}题 · ${difficultyText(settingsDifficulty)}。第二轮起可用滚动条决定推进新题还是加强复习。`;
     }else{
       $('practiceSettingHint').textContent=`首轮自动推进：${settingsCount}题 · ${difficultyText(settingsDifficulty)} · 约 ${ratio}% 新题 / ${100-ratio}% 旧题。`;
     }
     $('startBtn').hidden=false;
-    $('startBtn').textContent=active?`继续第 ${activeAttempt} 轮 · ${settingsCount}题`:`开始第 ${attempts.length+1} 轮 · ${settingsCount}题`;
+    $('startBtn').textContent=active?`继续第 ${activeAttempt} 轮 · ${actualActiveCount}题`:`开始第 ${attempts.length+1} 轮 · ${settingsCount}题`;
     if(best){
       $('resumeBtn').hidden=false; $('resumeBtn').textContent=`查看今日最高分 · ${best.score}分`;
       $('todayDesc').textContent=`今天已完成 ${attempts.length} 轮，最高 ${best.score} 分。继续练习时可自行调节新旧题比例；打卡图自动采用当天最高分。`;
@@ -556,13 +582,13 @@
   function startQuiz(){
     let saved=getActiveState();
     let qs=[], count=getDailyCount(), difficulty=getDifficulty(), attemptNo=getTodayAttempts().length+1;
-    let requestedNewRatio=80, ratioMode='auto', actualNewCount=null, actualOldCount=null;
+    let requestedNewRatio=80, ratioMode='auto', actualNewCount=null, actualOldCount=null, strictNeverMode=false, truncated=false, requestedCount=count;
     if(saved && Array.isArray(saved.qids) && saved.qids.length){
       qs=saved.qids.map(id=>BANK.find(q=>q.id===id)).filter(Boolean);
       if(qs.length===saved.qids.length){
         count=saved.total||qs.length; difficulty=saved.difficulty||difficulty; attemptNo=saved.attemptNo||attemptNo;
         requestedNewRatio=saved.requestedNewRatio??targetNewRatio(count,attemptNo).ratio;
-        ratioMode=saved.ratioMode||'auto'; actualNewCount=saved.actualNewCount??null; actualOldCount=saved.actualOldCount??null;
+        ratioMode=saved.ratioMode||'auto'; actualNewCount=saved.actualNewCount??null; actualOldCount=saved.actualOldCount??null; strictNeverMode=!!saved.strictNeverMode; truncated=!!saved.truncated; requestedCount=saved.requestedCount||count;
       }else saved=null;
     }
     if(!saved){
@@ -571,19 +597,23 @@
       qs=buildDailySet(count,difficulty,attemptNo);
       const meta=qs._meta||{};
       requestedNewRatio=meta.requestedNewRatio??targetNewRatio(count,attemptNo).ratio;
-      ratioMode=meta.ratioMode||'auto'; actualNewCount=meta.actualNewCount??null; actualOldCount=meta.actualOldCount??null;
+      ratioMode=meta.ratioMode||'auto'; actualNewCount=meta.actualNewCount??null; actualOldCount=meta.actualOldCount??null; strictNeverMode=!!meta.strictNeverMode; truncated=!!meta.truncated; requestedCount=meta.requestedCount||count;
     }
-    if(!qs.length){ showToast('题库加载失败，请强制刷新页面后重试'); return; }
+    if(!qs.length){
+      if(requestedNewRatio===100){ showToast('100% 新题模式：题库中已没有从未做过的题，请降低新题比例继续复习'); return; }
+      showToast('题库加载失败，请强制刷新页面后重试'); return;
+    }
     if(saved){
-      quiz={questions:qs,answers:Array.isArray(saved.answers)?saved.answers:Array(qs.length).fill(null),index:Math.min(saved.index||0,qs.length-1),startTime:saved.startTime||Date.now(),difficulty,attemptNo,requestedNewRatio,ratioMode,actualNewCount,actualOldCount};
+      quiz={questions:qs,answers:Array.isArray(saved.answers)?saved.answers:Array(qs.length).fill(null),index:Math.min(saved.index||0,qs.length-1),startTime:saved.startTime||Date.now(),difficulty,attemptNo,requestedNewRatio,ratioMode,actualNewCount,actualOldCount,strictNeverMode,truncated,requestedCount};
       if(quiz.answers.length!==qs.length)quiz.answers=Array(qs.length).fill(null);
     }else{
-      quiz={questions:qs,answers:Array(qs.length).fill(null),index:0,startTime:Date.now(),difficulty,attemptNo,requestedNewRatio,ratioMode,actualNewCount,actualOldCount};
+      quiz={questions:qs,answers:Array(qs.length).fill(null),index:0,startTime:Date.now(),difficulty,attemptNo,requestedNewRatio,ratioMode,actualNewCount,actualOldCount,strictNeverMode,truncated,requestedCount};
       persistQuiz();
     }
     showView('quizView'); renderQuestion(); startTimer();
+    if(strictNeverMode && truncated)showToast(`严格 100% 新题：当前只剩 ${qs.length} 道从未做过的题，本轮不补旧题`);
   }
-  function persistQuiz(){ if(!quiz)return; localStorage.setItem(activeKey(),JSON.stringify({qids:quiz.questions.map(q=>q.id),answers:quiz.answers,index:quiz.index,startTime:quiz.startTime,total:quiz.questions.length,difficulty:quiz.difficulty||getDifficulty(),attemptNo:quiz.attemptNo||1,requestedNewRatio:quiz.requestedNewRatio??80,ratioMode:quiz.ratioMode||'auto',actualNewCount:quiz.actualNewCount,actualOldCount:quiz.actualOldCount})); }
+  function persistQuiz(){ if(!quiz)return; localStorage.setItem(activeKey(),JSON.stringify({qids:quiz.questions.map(q=>q.id),answers:quiz.answers,index:quiz.index,startTime:quiz.startTime,total:quiz.questions.length,requestedCount:quiz.requestedCount||quiz.questions.length,difficulty:quiz.difficulty||getDifficulty(),attemptNo:quiz.attemptNo||1,requestedNewRatio:quiz.requestedNewRatio??80,ratioMode:quiz.ratioMode||'auto',actualNewCount:quiz.actualNewCount,actualOldCount:quiz.actualOldCount,strictNeverMode:!!quiz.strictNeverMode,truncated:!!quiz.truncated})); }
   function startTimer(){ clearInterval(timerHandle); const update=()=>{ if(!quiz)return; const sec=Math.floor((Date.now()-quiz.startTime)/1000); $('timerText').textContent=`${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`; }; update(); timerHandle=setInterval(update,1000); }
   function stopTimer(){clearInterval(timerHandle);timerHandle=null;}
 
@@ -955,7 +985,7 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
     ctx.fillStyle='#475569';ctx.font='500 24px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';
     wrapText(ctx,record.score===100?'今天全对。继续保持题感，同时把统计、DOE、SPC 等高区分度模块轮换复习。':'错题不是损失，是冲刺阶段最便宜的得分点。把原因弄清楚，明天再遇到就不丢分。',126,1070,810,38,3);
     ctx.fillStyle='#cbd5e1';ctx.font='600 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText(`四套模拟题 · 今日${record.total||10}题 · ${difficultyLabel(record.difficulty||'medium')}难度 · ${record.actualNewCount??'—'}新/${record.actualOldCount??'—'}旧`,76,1312);
-    ctx.fillStyle=theme.soft;ctx.font='800 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText(`BLACK BELT SPRINT · V2.5 · ${themeLabel(activeTheme)}`,76,1352);
+    ctx.fillStyle=theme.soft;ctx.font='800 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText(`BLACK BELT SPRINT · V2.5.1 · ${themeLabel(activeTheme)}`,76,1352);
     return new Promise(resolve=>c.toBlob(b=>resolve({blob:b,url:URL.createObjectURL(b)}),'image/png',.95));
   }
 
@@ -1014,10 +1044,10 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
     $('newRatioRange').addEventListener('input',e=>{
       const n=Math.max(0,Math.min(100,Number(e.target.value)||0));
       saveManualNewRatio(n);
-      $('ratioValue').textContent=`${n}% 新 / ${100-n}% 旧`;
-      $('smartMixBadge').textContent=`${n}% 新题`;
+      $('ratioValue').textContent=n===100?'100% 新 / 0% 旧（严格）':`${n}% 新 / ${100-n}% 旧`;
+      $('smartMixBadge').textContent=n===100?'100% 从未做过':`${n}% 新题`;
       $('mixTrackNew').style.width=`${n}%`;
-      $('smartMixReason').textContent='第二轮起采用你手动设置的新旧题比例';
+      $('smartMixReason').textContent=n===100?'严格新题模式：只抽从未做过的题，不足不补旧题':'第二轮起采用你手动设置的新旧题比例';
     });
     $('saveNicknameBtn').addEventListener('click',()=>{const v=$('nicknameInput').value.trim();localStorage.setItem(STORAGE.nickname,v||'黑带冲刺学员');showToast('昵称已保存');});
     $('checkinBtn').addEventListener('click',openCheckin); $('shareImageBtn').addEventListener('click',shareImage); $('downloadImageBtn').addEventListener('click',downloadImage);
