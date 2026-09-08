@@ -3,6 +3,10 @@
 
   const BANK = window.QUESTION_BANK || [];
   const KB = window.BLACK_BELT_KNOWLEDGE || {topics:{},blueprint:{domains:{},totalQuestions:150}};
+  // V3：needs_review 题不进任何抽题池；dupOf（跨套重复题）不进每日抽题池（章节练习题池不足时兜底回补）。
+  const isBlocked = (q)=>q && q.review==='needs_review';
+  const PRACTICE_BANK = BANK.filter(q=>!isBlocked(q));
+  const DAILY_BANK = PRACTICE_BANK.filter(q=>!q.dupOf);
   const $ = (id) => document.getElementById(id);
   const letters = ['A','B','C','D'];
   const STORAGE = {
@@ -15,6 +19,7 @@
     newRatioPrefix: 'bb_new_ratio_v25_',
     activePrefix: 'bb_active_v251_',
     dailyPrefix: 'bb_dailyset_v251_',
+    chapterActivePrefix: 'bb_active_chapter_v3_',
     aiConfig: 'bb_ai_config_v2',
     aiKeyLocal: 'bb_ai_key_local_v2',
     aiKeySession: 'bb_ai_key_session_v2',
@@ -342,7 +347,7 @@
         if(validLength && validStrict){
           const lastSeen=questionLastSeenMap(history);
           const actualNew=strictNeverMode?qs.length:qs.filter(q=>questionExposure(q,lastSeen).kind==='new').length;
-          qs._meta={requestedNewRatio,actualNewCount:actualNew,actualOldCount:qs.length-actualNew,ratioMode:ratioInfo.mode,plan:ratioInfo.plan,strictNeverMode,requestedCount:count,availableNeverSeen:BANK.length-globallySeen.size,truncated:strictNeverMode&&qs.length<count};
+          qs._meta={requestedNewRatio,actualNewCount:actualNew,actualOldCount:qs.length-actualNew,ratioMode:ratioInfo.mode,plan:ratioInfo.plan,strictNeverMode,requestedCount:count,availableNeverSeen:DAILY_BANK.length-globallySeen.size,truncated:strictNeverMode&&qs.length<count};
           return qs;
         }
       }catch{}
@@ -361,7 +366,7 @@
 
     // 100% 新题是严格模式：只允许“从未做过”的题，不足时减少本轮题量，绝不拿旧题补位。
     if(strictNeverMode){
-      const strictPool=BANK.filter(q=>!globallySeen.has(q.id));
+      const strictPool=DAILY_BANK.filter(q=>!globallySeen.has(q.id));
       const target=Math.min(count,strictPool.length);
       const selected=[],topicCounts={},topicCap=count<=10?2:3;
       balancedPick(strictPool,target,seed+11,scoreQ,selected,topicCounts,topicCap);
@@ -371,14 +376,14 @@
         for(const q of fallback){ if(selected.length>=target)break; selected.push(q); }
       }
       const finalSet=shuffle(selected.slice(0,target),seed+313);
-      finalSet._meta={requestedNewRatio,actualNewCount:finalSet.length,actualOldCount:0,ratioMode:ratioInfo.mode,plan:ratioInfo.plan,strictNeverMode:true,requestedCount:count,availableNeverSeen:strictPool.length,truncated:finalSet.length<count,newPoolSize:strictPool.length,oldPoolSize:BANK.length-strictPool.length};
+      finalSet._meta={requestedNewRatio,actualNewCount:finalSet.length,actualOldCount:0,ratioMode:ratioInfo.mode,plan:ratioInfo.plan,strictNeverMode:true,requestedCount:count,availableNeverSeen:strictPool.length,truncated:finalSet.length<count,newPoolSize:strictPool.length,oldPoolSize:DAILY_BANK.length-strictPool.length};
       localStorage.setItem(dailyKey(count,difficulty,attemptNo,requestedNewRatio),JSON.stringify(finalSet.map(q=>q.id)));
       return finalSet;
     }
 
     // 0%–90% 模式沿用“过去 4 周未出现 = 新题”的定义；池子充足时严格按目标比例抽取。
     const newPool=[],oldPool=[];
-    BANK.forEach(q=>{ (questionExposure(q,lastSeen,date).kind==='new'?newPool:oldPool).push(q); });
+    DAILY_BANK.forEach(q=>{ (questionExposure(q,lastSeen,date).kind==='new'?newPool:oldPool).push(q); });
     const selected=[],topicCounts={},topicCap=count<=10?2:3;
     let desiredNew=Math.round(count*requestedNewRatio/100);
     desiredNew=Math.max(0,Math.min(count,desiredNew));
@@ -390,7 +395,7 @@
       balancedPick(oldPool,count-selected.length,seed+97,scoreQ,selected,topicCounts,999);
     }
     if(selected.length<count){
-      const fallback=[...BANK].filter(q=>!selected.some(x=>x.id===q.id)).sort((a,b)=>scoreQ(b)-scoreQ(a));
+      const fallback=[...DAILY_BANK,...PRACTICE_BANK].filter(q=>!selected.some(x=>x.id===q.id)).sort((a,b)=>scoreQ(b)-scoreQ(a));
       for(const q of fallback){ if(selected.length>=count)break; selected.push(q); }
     }
     const finalSet=shuffle(selected.slice(0,count),seed+313);
@@ -399,6 +404,82 @@
     localStorage.setItem(dailyKey(count,difficulty,attemptNo,requestedNewRatio),JSON.stringify(finalSet.map(q=>q.id)));
     return finalSet;
   }
+
+  // ===== V3 章节练习（按 BOK 大域选题）=====
+  function domainNameByBok(bok){
+    const domains=(KB.blueprint&&KB.blueprint.domains)||{};
+    for(const [name,info] of Object.entries(domains)){ if(info.bok===bok)return name; }
+    const hi=(KB.handbookIndex&&KB.handbookIndex[bok])||null;
+    return hi?hi.name:'未知章节';
+  }
+  function chapterPool(bok){
+    let pool=PRACTICE_BANK.filter(q=>(q.bok||'')===bok);
+    if(pool.length)return pool;
+    // bok 缺失时按知识点 → BOK 域兜底
+    return PRACTICE_BANK.filter(q=>domainInfo(topicDomain(q.topic)).bok===bok);
+  }
+  function chapterActiveKey(bok){ return STORAGE.chapterActivePrefix+bok+'_'+localDateKey(); }
+  function getChapterActiveState(bok){ try{return JSON.parse(localStorage.getItem(chapterActiveKey(bok))||'null')}catch{return null} }
+  function buildChapterSet(bok,count){
+    const history=getHistory();
+    const seen=globallySeenIds(history);
+    const wrong=weightedWrongCounts(history);
+    const lastSeen=questionLastSeenMap(history);
+    const seed=hashString(`chapter|${bok}|${localDateKey()}|${count}|a${getTodayAttempts().length+1}`);
+    const full=chapterPool(bok);
+    let pool=full.filter(q=>!q.dupOf);
+    if(pool.length<count)pool=full; // 章节题池不足时允许跨套重复题兜底
+    const scoreQ=(q)=>{
+      const exp=questionExposure(q,lastSeen,localDateKey());
+      const novelty=exp.never?10:Math.min(4,Number.isFinite(exp.days)?exp.days/14:4);
+      const review=exp.kind==='old'?Math.min(8,(wrong[q.id]||0)*2):0;
+      return novelty+review+((hashString(`${seed}|${q.id}`)%1200)/1000);
+    };
+    const selected=[],topicCounts={},topicCap=count<=10?3:4;
+    balancedPick(pool.filter(q=>!seen.has(q.id)),count,seed+11,scoreQ,selected,topicCounts,topicCap);
+    if(selected.length<count)balancedPick(pool,count-selected.length,seed+37,scoreQ,selected,topicCounts,topicCap);
+    if(selected.length<count){ pool.sort((a,b)=>scoreQ(b)-scoreQ(a)).forEach(q=>{ if(selected.length<count&&!selected.some(x=>x.id===q.id))selected.push(q); }); }
+    const finalSet=shuffle(selected.slice(0,Math.min(count,selected.length)),seed+313);
+    localStorage.setItem(chapterActiveKey(bok),JSON.stringify(finalSet.map(q=>q.id)));
+    return finalSet;
+  }
+  function startChapterQuiz(bok){
+    const poolSize=chapterPool(bok).length;
+    if(!poolSize){ showToast('该章节暂无可用题目'); return; }
+    let saved=getChapterActiveState(bok);
+    let qs=[];
+    if(saved && Array.isArray(saved.qids) && saved.qids.length){
+      qs=saved.qids.map(id=>PRACTICE_BANK.find(q=>q.id===id)).filter(Boolean);
+    }
+    if(!qs.length || qs.length!==saved.qids.length){
+      const count=Math.min(getChapterCount(),poolSize);
+      qs=buildChapterSet(bok,count);
+    }
+    quiz={questions:qs,answers:Array(qs.length).fill(null),index:0,startTime:Date.now(),difficulty:'chapter',attemptNo:getTodayAttempts().length+1,requestedNewRatio:null,ratioMode:'chapter',actualNewCount:null,actualOldCount:null,strictNeverMode:false,truncated:false,requestedCount:qs.length,mode:'chapter',domain:bok};
+    persistQuiz();
+    showView('quizView'); renderQuestion(); startTimer();
+    showToast(`章节练习：${domainNameByBok(bok)} · ${qs.length} 题`);
+  }
+  function getChapterCount(){
+    const v=Number(localStorage.getItem('bb_chapter_count_v3')||10);
+    return [5,10,15,20].includes(v)?v:10;
+  }
+  function renderChapterGrid(){
+    const grid=$('chapterGrid'); if(!grid)return;
+    grid.innerHTML='';
+    const boks=['I','II','III','IV','V','VI','VII','VIII','IX'];
+    const weights=(KB.blueprint&&KB.blueprint.domains)||{};
+    boks.forEach(bok=>{
+      const pool=chapterPool(bok);
+      const domainInfoEntry=Object.entries(weights).find(([n,i])=>i.bok===bok);
+      const weight=domainInfoEntry?domainInfoEntry[1].weight:0;
+      const btn=document.createElement('button'); btn.className='chapter-btn'; btn.type='button';
+      btn.innerHTML=`<span class="chapter-bok">BOK ${bok}</span><span class="chapter-name">${escapeHtml(domainNameByBok(bok))}</span><span class="chapter-meta">约${weight}/150题 · 题库 ${pool.length} 题</span>`;
+      btn.addEventListener('click',()=>startChapterQuiz(bok));
+      grid.appendChild(btn);
+    });
+  }
+  // ===== 章节练习结束 =====
 
   function calcStreak(history){
     const dates=[...new Set(history.map(h=>h.date))].sort();
@@ -613,7 +694,7 @@
     showView('quizView'); renderQuestion(); startTimer();
     if(strictNeverMode && truncated)showToast(`严格 100% 新题：当前只剩 ${qs.length} 道从未做过的题，本轮不补旧题`);
   }
-  function persistQuiz(){ if(!quiz)return; localStorage.setItem(activeKey(),JSON.stringify({qids:quiz.questions.map(q=>q.id),answers:quiz.answers,index:quiz.index,startTime:quiz.startTime,total:quiz.questions.length,requestedCount:quiz.requestedCount||quiz.questions.length,difficulty:quiz.difficulty||getDifficulty(),attemptNo:quiz.attemptNo||1,requestedNewRatio:quiz.requestedNewRatio??80,ratioMode:quiz.ratioMode||'auto',actualNewCount:quiz.actualNewCount,actualOldCount:quiz.actualOldCount,strictNeverMode:!!quiz.strictNeverMode,truncated:!!quiz.truncated})); }
+  function persistQuiz(){ if(!quiz)return; const payload={qids:quiz.questions.map(q=>q.id),answers:quiz.answers,index:quiz.index,startTime:quiz.startTime,total:quiz.questions.length,requestedCount:quiz.requestedCount||quiz.questions.length,difficulty:quiz.difficulty||getDifficulty(),attemptNo:quiz.attemptNo||1,requestedNewRatio:quiz.requestedNewRatio??80,ratioMode:quiz.ratioMode||'auto',actualNewCount:quiz.actualNewCount,actualOldCount:quiz.actualOldCount,strictNeverMode:!!quiz.strictNeverMode,truncated:!!quiz.truncated,mode:quiz.mode||'daily',domain:quiz.domain||null}; localStorage.setItem(quiz.mode==='chapter'?chapterActiveKey(quiz.domain):activeKey(),JSON.stringify(payload)); }
   function startTimer(){ clearInterval(timerHandle); const update=()=>{ if(!quiz)return; const sec=Math.floor((Date.now()-quiz.startTime)/1000); $('timerText').textContent=`${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`; }; update(); timerHandle=setInterval(update,1000); }
   function stopTimer(){clearInterval(timerHandle);timerHandle=null;}
 
@@ -623,8 +704,8 @@
     const total=quiz.questions.length;
     $('progressText').textContent=`${quiz.index+1} / ${total}`;
     $('progressBar').style.width=`${((quiz.index+1)/total)*100}%`;
-    $('questionTopic').textContent=q.topic;
-    $('questionSource').textContent=`模拟题${q.set} · 第${q.qno}题`;
+    $('questionTopic').textContent=quiz.mode==='chapter'?`${q.topic} · ${domainNameByBok(q.bok||'')}`:q.topic;
+    $('questionSource').textContent=`模拟题${q.set} · 第${q.qno}题${q.figure?' · 图表题':''}`;
     $('questionText').textContent=q.question;
     const box=$('optionsBox'); box.innerHTML='';
     q.options.forEach((opt,i)=>{
@@ -643,7 +724,7 @@
     stopTimer();
     const items=quiz.questions.map((q,i)=>({id:q.id,answer:quiz.answers[i],correct:quiz.answers[i]===q.answer}));
     const correct=items.filter(x=>x.correct).length; const total=items.length; const score=Math.round(correct/Math.max(1,total)*100); const elapsed=Math.max(1,Math.round((Date.now()-quiz.startTime)/1000));
-    const record={date:localDateKey(),attemptNo:quiz.attemptNo||getTodayAttempts().length+1,completedAt:Date.now(),score,correct,total,elapsed,difficulty:quiz.difficulty||getDifficulty(),requestedNewRatio:quiz.requestedNewRatio??80,ratioMode:quiz.ratioMode||'auto',actualNewCount:quiz.actualNewCount,actualOldCount:quiz.actualOldCount,theme:getTheme(),qids:quiz.questions.map(q=>q.id),items};
+    const record={date:localDateKey(),attemptNo:quiz.attemptNo||getTodayAttempts().length+1,completedAt:Date.now(),score,correct,total,elapsed,difficulty:quiz.difficulty||getDifficulty(),requestedNewRatio:quiz.requestedNewRatio??80,ratioMode:quiz.ratioMode||'auto',actualNewCount:quiz.actualNewCount,actualOldCount:quiz.actualOldCount,mode:quiz.mode||'daily',domain:quiz.domain||null,theme:getTheme(),qids:quiz.questions.map(q=>q.id),items};
     const history=getHistory(); history.push(record); history.sort((a,b)=>a.date.localeCompare(b.date)||((a.attemptNo||1)-(b.attemptNo||1))||((a.completedAt||0)-(b.completedAt||0))); saveHistory(history);
     localStorage.removeItem(activeKey());
     renderResult(record);
@@ -787,6 +868,14 @@
     }finally{ clearTimeout(timeout); }
   }
 
+  function handbookRefFor(q){
+    const k=kbTopic(q.topic);
+    if(k && k.ref && /Handbook/i.test(k.ref))return k.ref;
+    const hi=(KB.handbookIndex&&KB.handbookIndex[q.bok])||null;
+    if(hi)return `BOK ${q.bok} ${hi.name}；${KB.handbook&&KB.handbook.title||'Handbook 3e'}：${hi.chapters}`;
+    return '';
+  }
+
   function buildDiagnosisPrompt(record){
     const history=getHistory(); const estimate=computeEstimate(history); const focus=resultFocus(record);
     const recent=[...history].sort((a,b)=>a.date.localeCompare(b.date)).slice(-7);
@@ -801,7 +890,8 @@
         `  题目：${q.question}`,
         `  学员选择：${letters[it.answer]} ${q.options[it.answer]}`,
         `  题库标准答案：${letters[q.answer]} ${q.options[q.answer]}`,
-        `  题库标准解析：${q.explanation}`
+        `  题库标准解析：${q.explanation}`,
+        `  Handbook 参考：${handbookRefFor(q)||'（无对应章节映射）'}`
       ].join('\n');
     }).filter(Boolean).join('\n');
     const todayTopics=(record.items||[]).map(it=>{const q=BANK.find(x=>x.id===it.id);return q?`${q.topic}:${it.correct?'对':'错'}`:'';}).filter(Boolean).join('；');
@@ -838,11 +928,12 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
     const system=`你是一名六西格玛黑带考试冲刺教练。请严格遵守以下规则：
 1. 用户提供的“题库标准答案”和“题库标准解析”是本应用的判题依据，不要擅自改答案。
 2. 解释优先使用用户消息中的“本地黑带知识库摘要”。该知识库按 CSSBB Body of Knowledge 组织，并结合黑带手册整理。不要补造教材没有支持的规则。
-3. CSSBB BOK 的模块题量（总计150题）可以用于判断复习优先级，但不要声称知道认证机构未提供的官方及格线或原始分到认证分的换算。应用的“实考预估”只是练习趋势。
-4. 如果知识库与题库标准答案出现表述差异，以本题标准答案为判题依据，并用一句话提示“本题按题库口径”。
-5. 输出中文，简洁、具体、可执行，不要写空泛鼓励。
-6. 结构固定为：①今日判断；②最值得补的2-3个点（结合BOK权重）；③错题背后的思维漏洞；④今晚20-30分钟复习安排；⑤明日做题提醒。
-7. 如果今天全对，也要指出如何避免“熟题高分假象”，建议跨主题巩固。`;
+3. 解释时可以参考每道错题附带的“Handbook 参考”章节（源自《The Certified Six Sigma Black Belt Handbook》第三版），帮助学员定位复习材料；只能引用这些明确给出的章节标题，不得编造未提供的章节或页码。教材引用只用于解释和定位，不改变题库标准答案。
+4. CSSBB BOK 的模块题量（总计150题）可以用于判断复习优先级，但不要声称知道认证机构未提供的官方及格线或原始分到认证分的换算。应用的“实考预估”只是练习趋势。
+5. 如果知识库与题库标准答案出现表述差异，以本题标准答案为判题依据，并用一句话提示“本题按题库口径”。
+6. 输出中文，简洁、具体、可执行，不要写空泛鼓励。
+7. 结构固定为：①今日判断；②最值得补的2-3个点（结合BOK权重）；③错题背后的思维漏洞；④今晚20-30分钟复习安排（可引用对应 Handbook 章节编号）；⑤明日做题提醒。
+8. 如果今天全对，也要指出如何避免“熟题高分假象”，建议跨主题巩固。`;
     try{
       const text=await callAi(system,buildDiagnosisPrompt(currentResultRecord),1200);
       box.classList.remove('loading'); box.textContent=text;
@@ -870,8 +961,8 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
     const {record,it,q}=currentAiQuestion;
     const out=$('aiQuestionOutput'); out.classList.add('loading'); out.textContent='AI 正在分析这道错题…';
     $('regenerateAiQuestionBtn').disabled=true;
-    const system=`你是六西格玛黑带考试错题教练。必须把“题库标准答案”视为本题判题依据，不要改答案。优先依据随题提供的本地黑带知识库摘要解释；知识库按 CSSBB BOK 和黑带手册整理。你的任务是帮助学员理解为什么自己的选项有诱惑力、关键概念是什么，以及下次如何快速判断。不要扩展到无关知识，不要虚构官方考试规则。输出中文，控制在300-500字。`;
-    const user=`主题：${q.topic}\n来源：模拟题${q.set} 第${q.qno}题\n题目：${q.question}\n选项：\n${q.options.map((x,i)=>`${letters[i]}. ${x}`).join('\n')}\n学员答案：${letters[it.answer]} ${q.options[it.answer]}\n题库标准答案：${letters[q.answer]} ${q.options[q.answer]}\n题库标准解析：${q.explanation}\n\n本地黑带知识库摘要：\n${kbContextForTopics([q.topic],1)}\n\n请按以下格式解释：\n1. 我为什么容易选错；\n2. 正确判断的关键；\n3. 其他选项为什么不优；\n4. 一句话记忆钩子；\n5. 给我1道不重复原题的口头自测题（最后单独给答案）。`;
+    const system=`你是六西格玛黑带考试错题教练。必须把“题库标准答案”视为本题判题依据，不要改答案。优先依据随题提供的本地黑带知识库摘要解释；知识库按 CSSBB BOK 和黑带手册整理。你同时会收到本题对应的《The Certified Six Sigma Black Belt Handbook》（第三版）参考章节：只能引用这些明确给出的章节标题与编号来帮助学员定位复习材料，不得编造未提供的章节或页码；Handbook 引用只用于解释与定位，不改变题库标准答案。你的任务是帮助学员理解为什么自己的选项有诱惑力、关键概念是什么，以及下次如何快速判断。不要扩展到无关知识，不要虚构官方考试规则。输出中文，控制在300-500字。`;
+    const user=`主题：${q.topic}\n来源：模拟题${q.set} 第${q.qno}题\n题目：${q.question}\n选项：\n${q.options.map((x,i)=>`${letters[i]}. ${x}`).join('\n')}\n学员答案：${letters[it.answer]} ${q.options[it.answer]}\n题库标准答案：${letters[q.answer]} ${q.options[q.answer]}\n题库标准解析：${q.explanation}\n\nHandbook 参考章节（仅限这些，不得虚构其他章节/页码）：${handbookRefFor(q)||'（本题无对应章节映射，请不要引用教材章节）'}\n\n本地黑带知识库摘要：\n${kbContextForTopics([q.topic],1)}\n\n请按以下格式解释：\n1. 我为什么容易选错；\n2. 正确判断的关键；\n3. 其他选项为什么不优；\n4. 一句话记忆钩子（可提示对应 Handbook 章节编号）；\n5. 给我1道不重复原题的口头自测题（最后单独给答案）。`;
     try{
       const text=await callAi(system,user,800);
       out.classList.remove('loading'); out.textContent=text;
@@ -984,8 +1075,9 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
     tags.forEach((t,i)=>{ctx.font='700 25px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillStyle=theme.soft;roundRect(ctx,126,y,Math.min(780,ctx.measureText(`${i+1}. ${t}`).width+70),62,31);ctx.fill();ctx.fillStyle=theme.accent;ctx.fillText(`${i+1}. ${t}`,153,y+40);y+=82;});
     ctx.fillStyle='#475569';ctx.font='500 24px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';
     wrapText(ctx,record.score===100?'今天全对。继续保持题感，同时把统计、DOE、SPC 等高区分度模块轮换复习。':'错题不是损失，是冲刺阶段最便宜的得分点。把原因弄清楚，明天再遇到就不丢分。',126,1070,810,38,3);
-    ctx.fillStyle='#cbd5e1';ctx.font='600 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText(`四套模拟题 · 今日${record.total||10}题 · ${difficultyLabel(record.difficulty||'medium')}难度 · ${record.actualNewCount??'—'}新/${record.actualOldCount??'—'}旧`,76,1312);
-    ctx.fillStyle=theme.soft;ctx.font='800 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText(`BLACK BELT SPRINT · V2.5.1 · ${themeLabel(activeTheme)}`,76,1352);
+    ctx.fillStyle='#cbd5e1';ctx.font='600 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText(`四套模拟题600题 · 今日${record.total||10}题 · ${difficultyLabel(record.difficulty||'medium')}难度 · ${record.actualNewCount??'—'}新/${record.actualOldCount??'—'}旧`,76,1312);
+    ctx.fillStyle=theme.soft;ctx.font='800 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText(`BLACK BELT SPRINT · V3.0 · ${themeLabel(activeTheme)}`,76,1352);
+    ctx.fillStyle='rgba(255,255,255,.45)';ctx.font='500 19px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif';ctx.fillText('关注小红书“AI带路党”，解锁更多skill',76,1396);
     return new Promise(resolve=>c.toBlob(b=>resolve({blob:b,url:URL.createObjectURL(b)}),'image/png',.95));
   }
 
@@ -1050,6 +1142,11 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
       $('smartMixReason').textContent=n===100?'严格新题模式：只抽从未做过的题，不足不补旧题':'第二轮起采用你手动设置的新旧题比例';
     });
     $('saveNicknameBtn').addEventListener('click',()=>{const v=$('nicknameInput').value.trim();localStorage.setItem(STORAGE.nickname,v||'黑带冲刺学员');showToast('昵称已保存');});
+    const chapterCountSel=$('chapterCountSelect');
+    if(chapterCountSel){
+      chapterCountSel.value=String(getChapterCount());
+      chapterCountSel.addEventListener('change',e=>{const n=Number(e.target.value);if([5,10,15,20].includes(n)){localStorage.setItem('bb_chapter_count_v3',String(n));showToast(`章节练习题量已设为 ${n} 题`);}});
+    }
     $('checkinBtn').addEventListener('click',openCheckin); $('shareImageBtn').addEventListener('click',shareImage); $('downloadImageBtn').addEventListener('click',downloadImage);
     document.querySelectorAll('[data-close-share]').forEach(el=>el.addEventListener('click',closeShareModal));
 
@@ -1069,7 +1166,7 @@ ${kbContext||'今天无错题，按高权重模块做综合巩固。'}
   }
 
   function init(){
-    applyTheme(); $('bankValue').textContent=BANK.length; bind();setupInstall();refreshHome();
+    applyTheme(); $('bankValue').textContent=BANK.length; bind();setupInstall();refreshHome();renderChapterGrid();
     if(!BANK.length){ showToast('题库未加载，请检查 questions.js 是否已部署并强制刷新'); $('startBtn').disabled=true; }
     if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
   }

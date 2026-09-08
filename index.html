@@ -128,6 +128,23 @@
           <button id="resumeBtn" class="secondary-btn" hidden>查看今日结果</button>
         </div>
 
+        <div class="panel chapter-panel">
+          <div class="panel-head">
+            <div>
+              <h2>章节练习 · 按 BOK 大纲</h2>
+              <p class="muted small">按 CSSBB BOK 九大模块单独刷题，适合补弱项。题目与解析、AI 追问、打卡统计与每日一练一致。</p>
+            </div>
+            <select id="chapterCountSelect" class="practice-select chapter-count-select" aria-label="章节练习题量">
+              <option value="5">5 题</option>
+              <option value="10" selected>10 题</option>
+              <option value="15">15 题</option>
+              <option value="20">20 题</option>
+            </select>
+          </div>
+          <div id="chapterGrid" class="chapter-grid"></div>
+          <p class="muted tiny">章节题量标注为官方 BOK 每 150 题的模块题量权重；“题库 N 题”为当前可用练习题数。答案或题面存疑的题已自动排除。</p>
+        </div>
+
         <div class="panel">
           <div class="panel-head">
             <h2>你的冲刺数据</h2>
@@ -174,8 +191,8 @@
 
         <details class="panel details-panel">
           <summary>关于题库、AI 与考试预估</summary>
-          <p>当前 V2.5.1 从你提供的四套模拟题中先纳入 81 道文字清晰、无需依赖复杂图表的题目，并保留原模拟题编号。扫描不清、图表依赖强或容易因 OCR 产生歧义的题暂未纳入。</p>
-          <p>新增本地“黑带知识库”：以 CSSBB Body of Knowledge 为考试范围与权重框架，并结合《The Certified Six Sigma Black Belt Handbook》第三版和《注册六西格玛黑带手册》第二版整理成概念、公式、易错点和复习抓手。知识库完全离线可用。</p>
+          <p>当前 V3 题库覆盖模拟测试题 2–5 共 600 题（保留原模拟题编号），全部来自你提供的模拟题 PDF，并以配套答案 Excel 为标准答案来源。跨套完全重复的题会自动去重，答案或题面存疑的题会标记待核对并暂时排除在抽题池之外。</p>
+          <p>新增本地“黑带知识库”：以 CSSBB Body of Knowledge 为考试范围与权重框架，并结合《The Certified Six Sigma Black Belt Handbook》第三版和《注册六西格玛黑带手册》第二版整理成概念、公式、易错点和复习抓手。知识库完全离线可用。开启 AI 后，单题追问和今日诊断会随题附带对应的 Handbook 参考章节（如 Ch.21 假设检验、Ch.27 SPC），AI 只引用这些章节做解释和定位，不改变题库标准答案。</p>
           <p>每日题量可设为 5 / 10 / 15 / 20 题，难度可选低 / 中 / 高；同一天可连续练习多轮，打卡图自动采用当天最高分。首轮练习会优先推进新题：默认约 80% 为过去 4 周未出现的题；系统会结合最近 7 天练习量和考试倒计时动态调整。第二轮起可以手动选择新旧题比例；选择 100% 时进入严格新题模式，只抽从未做过的题。难度采用题库难度标签进行加权抽题。基础模式完全不需要 AI 或 API Key。只有学员主动开启 AI 学习助手后，才会把必要的题目、答题结果、学习表现，以及对应的本地知识库摘要发送给所选 AI 服务商。</p>
           <p>“实考预估分”现在加入 CSSBB BOK 的 150 题模块权重进行加权，同时结合近期表现和样本量给出区间。它用于冲刺趋势判断，不等同任何认证机构的官方换算分。</p>
         </details>
@@ -342,6 +359,7 @@
     </div>
 
     <div id="toast" class="toast" hidden></div>
+    <footer class="promo-footer">关注小红书“AI带路党”，解锁更多skill</footer>
   </div>
 
   <script src="questions.js"></script>

@@ -1,15 +1,25 @@
 {
-  "name":"黑带备考冲刺｜每日一练 V2.5.1",
-  "short_name":"黑带冲刺",
-  "description":"六西格玛黑带冲刺：智能新题推进、多轮练习、新旧题比例调节、100%严格新题、主题换肤、解析复盘、考试预估、倒计时、可选BYOK AI与最高分打卡图。",
-  "start_url":"./",
-  "scope":"./",
-  "display":"standalone",
-  "background_color":"#f4f7fb",
-  "theme_color":"#0f172a",
-  "lang":"zh-CN",
-  "icons":[
-    {"src":"icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
-    {"src":"icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  "name": "黑带备考冲刺｜每日一练 V3.0",
+  "short_name": "黑带冲刺",
+  "description": "六西格玛黑带冲刺：600题全量题库、BOK章节练习、智能新题推进、多轮练习、主题换肤、解析复盘、考试预估、倒计时、可选BYOK AI（引用Handbook章节）与最高分打卡图。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f7fb",
+  "theme_color": "#0f172a",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
   ]
 }

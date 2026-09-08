@@ -56,3 +56,16 @@ html[data-theme="chinese"] .hero-card::before{content:"丹青 · 笃行";positio
 html[data-theme="nezha"] .hero-card::before{content:"破浪 · 冲刺";position:absolute;right:22px;bottom:18px;color:rgba(255,235,210,.16);font-size:19px;font-weight:900;letter-spacing:4px}
 html[data-theme="odyssey"] .hero-card::before{content:"ΚΛΕΟΣ  ·  ODYSSEY";position:absolute;right:22px;bottom:18px;color:rgba(255,255,255,.13);font-size:16px;letter-spacing:3px}
 @media(max-width:430px){.smart-mix-head{align-items:center}.mix-meta{font-size:9px}.ratio-control-head{align-items:flex-start;flex-direction:column;gap:3px}.theme-setting-row{margin-top:8px}}
+
+/* ===== V3 章节练习 ===== */
+.chapter-panel .panel-head{align-items:flex-start;gap:10px}
+.chapter-count-select{flex-shrink:0;max-width:96px}
+.chapter-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin:6px 0 8px}
+.chapter-btn{display:grid;gap:3px;justify-items:start;text-align:left;padding:11px 12px;border-radius:14px;border:1px solid var(--line);background:var(--theme-soft);color:var(--ink);cursor:pointer;transition:transform .12s ease,border-color .12s ease;min-height:64px}
+.chapter-btn:active{transform:scale(.97)}
+.chapter-btn:hover{border-color:var(--accent)}
+.chapter-bok{font-size:9px;font-weight:900;letter-spacing:.8px;color:var(--accent);text-transform:uppercase}
+.chapter-name{font-size:12.5px;font-weight:850;line-height:1.25}
+.chapter-meta{font-size:9.5px;color:var(--muted)}
+@media(max-width:360px){.chapter-grid{grid-template-columns:1fr}}
+.promo-footer{text-align:center;color:var(--muted);font-size:11px;padding:10px 0 22px;opacity:.75}

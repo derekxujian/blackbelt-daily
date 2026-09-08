@@ -1,6 +1,21 @@
 window.BLACK_BELT_KNOWLEDGE = {
-  version: '2026.08-v1',
+  version: '2026.09-v3',
   note: '本知识库为备考复盘摘要，依据 CSSBB Body of Knowledge、The Certified Six Sigma Black Belt Handbook (3rd ed.)、注册六西格玛黑带手册（第2版）整理；只保留概念、公式、易错点与复习抓手，不复制教材原文。',
+  handbook: {
+    title: 'The Certified Six Sigma Black Belt Handbook, 3rd Edition',
+    usage: 'AI 解析时仅可参考下面给出的章节标题与编号；不得虚构未提供的章节或页码。章节引用只用于解释与定位，不改变题库标准答案。'
+  },
+  handbookIndex: {
+    'I':   {name:'组织级规划与部署', chapters:'Ch.1 Six Sigma and Lean Fundamentals；Ch.2 Leadership'},
+    'II':  {name:'组织过程管理与度量', chapters:'Ch.3 Impact on Stakeholders (p.41)；Ch.4 Benchmarking (p.45)；Ch.5 Business Measures (p.55)'},
+    'III': {name:'团队管理', chapters:'Ch.6 Team Formation (p.79)；Ch.7 Team Facilitation (p.87)；Ch.8 Team Dynamics (p.99)；Ch.9 Team Training (p.113)'},
+    'IV':  {name:'Define 定义', chapters:'Ch.10 Voice of the Customer (p.133)；Ch.11 Business Case and Project Charter (p.151)；Ch.12 Project Management Tools (p.165)；Ch.13 Analytical Tools (p.177)'},
+    'V':   {name:'Measure 测量', chapters:'Ch.14 Process Characteristics (p.205)；Ch.15 Data Collection (p.227)；Ch.16 Measurement Systems (p.251)；Ch.17 Basic Statistics (p.281)；Ch.18 Probability (p.327)；Ch.19 Process Capability (p.365)'},
+    'VI':  {name:'Analyze 分析', chapters:'Ch.20 Measuring and Modeling Relationships between Variables (p.393)；Ch.21 Hypothesis Testing (p.427)；Ch.22 FMEA (p.475)；Ch.23 Additional Analysis Methods (p.485)'},
+    'VII': {name:'Improve 改进', chapters:'Ch.24 Design of Experiments (p.503)；Ch.25 Lean Methods (p.557)；Ch.26 Implementation (p.575)'},
+    'VIII':{name:'Control 控制', chapters:'Ch.27 Statistical Process Control (p.583)；Ch.28 Other Controls (p.629)；Ch.29 Maintain Controls (p.637)；Ch.30 Sustain Improvements (p.643)'},
+    'IX':  {name:'DFSS 六西格玛设计', chapters:'Ch.31 Common DFSS Methodologies (p.653)；Ch.32 Design for X (p.659)；Ch.33 Robust Designs (p.665)'}
+  },
   blueprint: {
     totalQuestions: 150,
     domains: {
