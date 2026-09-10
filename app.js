@@ -713,7 +713,7 @@
   function reviewEnHtml(q){
     if(!q.question_en)return '';
     const opts=q.options_en&&q.options_en.length?q.options_en.map((o,i)=>`<div class="en-opt"><span class="en-letter">${letters[i]}</span>${escapeHtml(o)}</div>`).join(''):'';
-    return `<details class="en-contrast"><summary>English · 英文原文对照</summary><p class="en-q">${escapeHtml(q.question_en)}</p>${opts}</details>`;
+    return `<details class="en-contrast"><summary>English 英文原文（可选参考）</summary><p class="en-q">${escapeHtml(q.question_en)}</p>${opts}</details>`;
   }
   function renderQuestionEn(q){
     const box=$('enBox'); if(!box)return;
@@ -822,9 +822,9 @@
       div.innerHTML=`<div class="review-head"><span class="review-number">${idx+1}. ${escapeHtml(q.topic)} · 模拟题${q.set}-${q.qno}</span><span class="review-status">${it.correct?'✓ 正确':'✕ 错误'}</span></div>
       <div class="review-q">${escapeHtml(q.question)}</div>
       ${reviewFigureHtml(q)}
-      ${reviewEnHtml(q)}
       <div class="answer-line">你的答案：${letters[it.answer]}　正确答案：<strong>${letters[q.answer]}</strong> ${escapeHtml(q.options[q.answer])}</div>
-      <div class="explanation">${escapeHtml(q.explanation)}</div>${!it.correct?kbInlineHtml(q.topic):''}`;
+      <div class="explanation">${escapeHtml(q.explanation)}</div>${!it.correct?kbInlineHtml(q.topic):''}
+      ${reviewEnHtml(q)}`;
       if(!it.correct){
         const aiBtn=document.createElement('button'); aiBtn.className='ask-ai-btn'; aiBtn.disabled=!isAiReady();
         aiBtn.textContent=isAiReady()?'🤖 问 AI：为什么我会错？':'🤖 开启 AI 后可追问';
