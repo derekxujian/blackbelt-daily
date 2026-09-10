@@ -698,6 +698,31 @@
   function startTimer(){ clearInterval(timerHandle); const update=()=>{ if(!quiz)return; const sec=Math.floor((Date.now()-quiz.startTime)/1000); $('timerText').textContent=`${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`; }; update(); timerHandle=setInterval(update,1000); }
   function stopTimer(){clearInterval(timerHandle);timerHandle=null;}
 
+  function renderQuestionFigure(q){
+    const box=$('figureBox'); if(!box)return;
+    const img=$('figureImg');
+    const src=figureSrc(q);
+    if(src){ box.hidden=false; img.src=src; img.onerror=()=>{box.hidden=true;}; }
+    else box.hidden=true;
+  }
+  function figureSrc(q){ return q.figureImg || (q.figure?`figures/${q.id}.png`:null); }
+  function reviewFigureHtml(q){
+    const src=figureSrc(q);
+    return src?`<figure class="question-figure"><img src="${src}" alt="题目图表" loading="lazy"/><figcaption class="figure-cap">图表</figcaption></figure>`:'';
+  }
+  function reviewEnHtml(q){
+    if(!q.question_en)return '';
+    const opts=q.options_en&&q.options_en.length?q.options_en.map((o,i)=>`<div class="en-opt"><span class="en-letter">${letters[i]}</span>${escapeHtml(o)}</div>`).join(''):'';
+    return `<details class="en-contrast"><summary>English · 英文原文对照</summary><p class="en-q">${escapeHtml(q.question_en)}</p>${opts}</details>`;
+  }
+  function renderQuestionEn(q){
+    const box=$('enBox'); if(!box)return;
+    const body=$('enBody');
+    if(!q.question_en){ box.hidden=true; body.innerHTML=''; return; }
+    box.hidden=false;
+    const opts=q.options_en && q.options_en.length?q.options_en.map((o,i)=>`<div class="en-opt"><span class="en-letter">${letters[i]}</span>${escapeHtml(o)}</div>`).join(''):'';
+    body.innerHTML=`<p class="en-q">${escapeHtml(q.question_en)}</p>${opts}`;
+  }
   function renderQuestion(){
     if(!quiz || !quiz.questions || !quiz.questions.length){ showToast('当前没有可用题目，请刷新页面'); return; }
     const q=quiz.questions[quiz.index];
@@ -707,6 +732,8 @@
     $('questionTopic').textContent=quiz.mode==='chapter'?`${q.topic} · ${domainNameByBok(q.bok||'')}`:q.topic;
     $('questionSource').textContent=`模拟题${q.set} · 第${q.qno}题${q.figure?' · 图表题':''}`;
     $('questionText').textContent=q.question;
+    renderQuestionFigure(q);
+    renderQuestionEn(q);
     const box=$('optionsBox'); box.innerHTML='';
     q.options.forEach((opt,i)=>{
       const b=document.createElement('button'); b.className='option-btn'+(quiz.answers[quiz.index]===i?' selected':'');
@@ -794,6 +821,8 @@
       const div=document.createElement('div'); div.className=`review-item ${it.correct?'correct':'wrong'}`;
       div.innerHTML=`<div class="review-head"><span class="review-number">${idx+1}. ${escapeHtml(q.topic)} · 模拟题${q.set}-${q.qno}</span><span class="review-status">${it.correct?'✓ 正确':'✕ 错误'}</span></div>
       <div class="review-q">${escapeHtml(q.question)}</div>
+      ${reviewFigureHtml(q)}
+      ${reviewEnHtml(q)}
       <div class="answer-line">你的答案：${letters[it.answer]}　正确答案：<strong>${letters[q.answer]}</strong> ${escapeHtml(q.options[q.answer])}</div>
       <div class="explanation">${escapeHtml(q.explanation)}</div>${!it.correct?kbInlineHtml(q.topic):''}`;
       if(!it.correct){
